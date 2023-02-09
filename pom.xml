@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>net.e175.klaus</groupId>
+    <artifactId>zip-prefixer</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <parent>
+        <groupId>org.basepom</groupId>
+        <artifactId>basepom-oss</artifactId>
+        <version>51</version>
+    </parent>
+    <name>zip-prefixer</name>
+    <description>Prefixes a ZIP (or JAR) file with arbitrary data without breaking internal offsets or rebuilding from
+        scratch.
+    </description>
+
+    <properties>
+        <project.build.targetJdk>8</project.build.targetJdk>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+
+        <junit.version>5.9.2</junit.version>
+        <!-- licence headers are stupid -->
+        <basepom.check.skip-license>true</basepom.check.skip-license>
+        <!-- checkstyle isn't the law -->
+        <basepom.check.fail-checkstyle>false</basepom.check.fail-checkstyle>
+    </properties>
+
+    <licenses>
+        <license>
+            <name>MIT</name>
+            <url>https://spdx.org/licenses/MIT.html</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>Klaus Brunner</name>
+            <url>https://github.com/KlausBrunner</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git@github.com:KlausBrunner/zip-prefixer.git</connection>
+        <developerConnection>scm:git:git@github.com:KlausBrunner/zip-prefixer.git</developerConnection>
+        <url>git@github.com:KlausBrunner/zip-prefixer.git</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>net.e175.klaus.ZipPrefixer</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
