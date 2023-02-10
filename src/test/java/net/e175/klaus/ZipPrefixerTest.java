@@ -1,6 +1,8 @@
 package net.e175.klaus;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -32,13 +34,16 @@ class ZipPrefixerTest {
     void validatesZipOffsets() throws IOException {
         Path f = prepareTestFile("simplest.jar");
 
-        ZipPrefixer.looksLikeGoodZip(f);
+        TestUtil.looksLikeGoodZip(f);
         ZipPrefixer.adjustZipOffsets(f, 0);
     }
 
-    @Test
-    void adjustsZipOffsets() throws IOException {
-        Path f = prepareTestFile("simplest.jar");
+    @ParameterizedTest
+    @ValueSource(strings = {"simplest.jar", "simplest-zip64.jar", "single-1g-file.zip", "single-10g-file.zip", "2k-tiny-files.zip", "20k-tiny-files.zip"})
+    void adjustsZipOffsets(String filename) throws IOException {
+        Path f = prepareTestFile(filename);
+
+        TestUtil.looksLikeGoodZip(f);
 
         final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
 
@@ -53,7 +58,15 @@ class ZipPrefixerTest {
         ZipPrefixer.adjustZipOffsets(f, prefix.length);
 
         ZipPrefixer.validateZipOffsets(f);
-        ZipPrefixer.looksLikeGoodZip(f);
+        TestUtil.looksLikeGoodZip(f);
+    }
+
+    @Test
+    void validatesZipOffsets64() throws IOException {
+        Path f = prepareTestFile("simplest-zip64.jar");
+
+        TestUtil.looksLikeGoodZip(f);
+        ZipPrefixer.adjustZipOffsets(f, 0);
     }
 
 }

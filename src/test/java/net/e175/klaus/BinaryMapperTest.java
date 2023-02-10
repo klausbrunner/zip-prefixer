@@ -113,8 +113,6 @@ class BinaryMapperTest {
             channel.write(w.data);
         }
 
-        System.out.println(f);
-
         try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ)) {
             PatternInstance pi = BinaryMapper.read(TEST_SPEC_1, channel, 4).orElseThrow(RuntimeException::new);
             assertEquals(4321, pi.getShort("short1"));
@@ -135,8 +133,6 @@ class BinaryMapperTest {
 
             applyWrites(writeQueue, channel);
         }
-
-        System.out.println(f);
 
         try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ)) {
             PatternInstance pi = BinaryMapper.read(TEST_SPEC_1, channel, 4).orElseThrow(RuntimeException::new);

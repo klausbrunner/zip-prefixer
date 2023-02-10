@@ -268,12 +268,45 @@ class BinaryMapper {
      */
     static Optional<PatternInstance> seek(PatternSpec spec, SeekableByteChannel inChannel, long startPosition, boolean forward) throws IOException {
         final long maxPosition = inChannel.size() - spec.size;
+        return seek(spec,
+                inChannel,
+                forward ? Math.max(0, startPosition) : Math.min(maxPosition, startPosition),
+                pi -> forward ? 1L : -1L,
+                0,
+                maxPosition);
+    }
 
-        ByteBuffer buf = spec.bufferFor();
-        for (long i = forward ? Math.max(0, startPosition) : Math.min(maxPosition, startPosition); forward ? i < maxPosition : i >= 0; i = i + (forward ? 1 : -1)) {
-            Optional<PatternInstance> readInstance = read(spec, inChannel, i, buf);
-            if (readInstance.isPresent()) {
-                return readInstance;
+    /**
+     * Seek for a pattern in the given channel, starting from a given position. If the PatternSpec has any magic defined,
+     * this is used to test if the pattern has been found. If not, move forward or backward by the amount supplied
+     * by stepSupplier and try again. If that amount is 0, end the search.
+     */
+    static Optional<PatternInstance> seek(PatternSpec spec,
+                                          SeekableByteChannel inChannel,
+                                          long startPosition, Function<PatternInstance, Long> stepSupplier,
+                                          long minPosition,
+                                          long maxPosition) throws IOException {
+        long stepSupplied;
+        final ByteBuffer buf = spec.bufferFor();
+        PatternInstance readInstance;
+
+        final long realMaxPosition = Math.min(maxPosition, inChannel.size() - spec.size);
+        final long realMinPosition = Math.max(0, minPosition);
+
+        for (long i = startPosition;
+             i <= realMaxPosition && i >= realMinPosition;
+             i += stepSupplied) {
+
+            readInstance = readUnvalidated(spec, inChannel, i, buf);
+
+            if (readInstance.validateMagic()) {
+                return Optional.of(readInstance);
+            }
+
+            stepSupplied = stepSupplier.apply(readInstance);
+
+            if (stepSupplied == 0) {
+                break;
             }
         }
         return Optional.empty();
@@ -284,15 +317,24 @@ class BinaryMapper {
      * it's used to validate. This reuses a supplied ByteBuffer.
      */
     static Optional<PatternInstance> read(PatternSpec spec, SeekableByteChannel inChannel, long position, ByteBuffer buf) throws IOException {
+        PatternInstance pi = readUnvalidated(spec, inChannel, position, buf);
+        if (pi.validateMagic()) {
+            return Optional.of(pi);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Read bytes at given location, assuming that the given PatternSpec is found there. Magic is not validated.
+     * This reuses a supplied ByteBuffer.
+     */
+    static PatternInstance readUnvalidated(PatternSpec spec, SeekableByteChannel inChannel, long position, ByteBuffer buf) throws IOException {
         inChannel.position(position);
         int bytesRead = inChannel.read(buf);
         assert bytesRead == spec.size;
         PatternInstance pi = new PatternInstance(spec, position, buf);
         buf.rewind();
-        if (pi.validateMagic()) {
-            return Optional.of(pi);
-        }
-        return Optional.empty();
+        return pi;
     }
 
     /**
