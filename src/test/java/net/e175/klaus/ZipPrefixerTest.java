@@ -1,5 +1,6 @@
 package net.e175.klaus;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -59,6 +60,28 @@ class ZipPrefixerTest {
 
         ZipPrefixer.validateZipOffsets(f);
         TestUtil.looksLikeGoodZip(f);
+    }
+
+    @ParameterizedTest
+    @Disabled("needs lots of time/disk space")
+    @ValueSource(strings = {"few-huge-files.zip"})
+    void adjustsZipOffsetsOnHugeFiles(String filename) throws IOException {
+        Path f = prepareTestFile(filename);
+        ZipPrefixer.validateZipOffsets(f);
+
+        final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
+
+        assertEquals(prefix.length, ZipPrefixer.applyPrefixes(f, prefix));
+
+        try {
+            ZipPrefixer.validateZipOffsets(f);
+            fail("should have thrown an exception, but didn't");
+        } catch (IOException ignored) {
+        }
+
+        ZipPrefixer.adjustZipOffsets(f, prefix.length);
+
+        ZipPrefixer.validateZipOffsets(f);
     }
 
     @Test

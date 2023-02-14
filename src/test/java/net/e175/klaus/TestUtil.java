@@ -37,9 +37,9 @@ final class TestUtil {
     static Path looksLikeGoodZip(Path f) throws IOException {
         try (ZipFile archive = new ZipFile(f)) {
             Enumeration<ZipArchiveEntry> entries = archive.getEntriesInPhysicalOrder();
-            while(entries.hasMoreElements()) {
+            while (entries.hasMoreElements()) {
                 ZipArchiveEntry entry = entries.nextElement();
-                if(!archive.canReadEntryData(entry)) {
+                if (!archive.canReadEntryData(entry)) {
                     throw new ZipException("can't read entry " + entry);
                 }
             }

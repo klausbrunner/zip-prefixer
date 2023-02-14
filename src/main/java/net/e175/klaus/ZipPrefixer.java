@@ -2,13 +2,11 @@ package net.e175.klaus;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.*;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.Queue;
+import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipException;
@@ -90,15 +88,7 @@ public final class ZipPrefixer {
             FieldSpec.of(8, "offsetOfStartOfCD"));
 
     // Zip64 Extended Information Extra Field
-    // NOTE: this may come in different sizes;
-    // we only care for versions with at least the relative
-    // header offset included.
-    static final PatternSpec ZIP64_EIEF = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
-            FieldSpec.of(2, "zip64EIEFSignature", new byte[]{0x01, 0x00}),
-            FieldSpec.of(2, "size"), // must be >= 24
-            FieldSpec.of(8, "originalSize"),
-            FieldSpec.of(8, "compressedSize"),
-            FieldSpec.of(8, "relativeHeaderOffset"));
+    static final FieldSpec ZIP64_EIEF_SIGNATURE = FieldSpec.of(2, "zip64EIEFSignature", new byte[]{0x01, 0x00});
 
     /**
      * Prepend prefix(es) to an existing file. This method does not care about file types or contents, it just
@@ -220,15 +210,20 @@ public final class ZipPrefixer {
 
                 numberOfCdEntries = zip64eocdr.getLong("numberOfEntriesInCDonThisDisk");
             }
-            requiresZip64 = false;
 
             // now walk through central directory entries
             long sequentialOffset = cdOffset;
+            final ByteBuffer cfhBuffer = CFH.bufferFor();
+            final ByteBuffer lfhBuffer = LFH.bufferFor();
             for (int i = 0; i < numberOfCdEntries; i++) {
-                PatternInstance cfh = read(CFH, channel, sequentialOffset)
+                PatternInstance cfh = read(CFH, channel, sequentialOffset, cfhBuffer)
                         .orElseThrow(() -> new ZipException("Central file header for entry is not where it should be"));
 
-                // now get the offset of the local header. in simple cases, this is right inside the CDR,
+                // skip over filename and position on any extra fields
+                sequentialOffset += cfh.spec.size + cfh.getUnsignedShort("fileNameLength");
+                final int extraFieldLength = cfh.getUnsignedShort("extraFieldLength");
+
+                // now look at the offset of the local header. in simple cases, this is right inside the CDR,
                 // in ZIP64 cases it *could* be in the extended field.
                 long lfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
                 if (lfhOffset != 0xFF_FF_FF_FFL) {
@@ -237,45 +232,47 @@ public final class ZipPrefixer {
                         writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader", (int) lfhOffset));
                     }
                 } else {
-                    requiresZip64 = true;
-                }
-
-                // skip over filename
-                sequentialOffset += cfh.spec.size + cfh.getUnsignedShort("fileNameLength");
-                final int extraFieldLength = cfh.getUnsignedShort("extraFieldLength");
-
-                // check for ZIP64 extra data field with the necessary length
-                Optional<PatternInstance> zip64eiefOpt = seek(ZIP64_EIEF, channel, sequentialOffset,
-                        (patternInstance -> (long) patternInstance.getUnsignedShort("size")),
-                        sequentialOffset,
-                        sequentialOffset + extraFieldLength);
-
-                // additional validation of length
-                if (zip64eiefOpt.isPresent() && zip64eiefOpt.get().getUnsignedShort("size") < 24) {
-                    zip64eiefOpt = Optional.empty();
-                }
-
-                if (!zip64eiefOpt.isPresent()) {
-                    if (requiresZip64) {
-                        throw new ZipException("ZIP64 extra fields required, but not found in file");
+                    // ZIP64 offset it is; now we need to determine the expected format of the ZIP64 EIEF,
+                    // which depends on the fields set to all-1s.
+                    List<FieldSpec> requiredFieldsInEIEF = new ArrayList<>(5);
+                    requiredFieldsInEIEF.add(ZIP64_EIEF_SIGNATURE);
+                    requiredFieldsInEIEF.add(FieldSpec.of(2, "size"));
+                    if (cfh.getUnsignedInt("uncompressedSize") == 0xFF_FF_FF_FFL) {
+                        requiredFieldsInEIEF.add(FieldSpec.of(8, "uncompressedSize"));
                     }
-                } else {
-                    PatternInstance zip64eief = zip64eiefOpt.get();
-                    lfhOffset = zip64eief.getLong("relativeHeaderOffset");
+                    if (cfh.getUnsignedInt("compressedSize") == 0xFF_FF_FF_FFL) {
+                        requiredFieldsInEIEF.add(FieldSpec.of(8, "compressedSize"));
+                    }
+                    requiredFieldsInEIEF.add(FieldSpec.of(8, "relativeOffsetOfLocalHeader"));
+
+                    PatternSpec requiredZip64EIEF = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
+                            requiredFieldsInEIEF.toArray(new FieldSpec[0]));
+
+                    PatternInstance zip64eief = seek(requiredZip64EIEF, channel, sequentialOffset,
+                            // extra fields are separated by header (2+2) plus size
+                            (patternInstance -> (long) patternInstance.getUnsignedShort("size") + 4),
+                            sequentialOffset,
+                            sequentialOffset + extraFieldLength).orElseThrow(
+                            () -> new ZipException("missing ZIP64 extra fields in CFH"));
+
+                    // additional validation of length
+                    if (zip64eief.getUnsignedShort("size")
+                            < (requiredZip64EIEF.nameToFSI.size() - 2) * 8) {
+                        throw new ZipException("ZIP64 extra fields in CFH seem to exist, but are too small.");
+                    }
+
+                    lfhOffset = zip64eief.getLong("relativeOffsetOfLocalHeader");
                     if (adjustment != 0) {
                         lfhOffset += adjustment;
-                        writeQueue.add(zip64eief.writeLong("relativeHeaderOffset", lfhOffset));
+                        writeQueue.add(zip64eief.writeLong("relativeOffsetOfLocalHeader", lfhOffset));
                     }
                 }
 
-                read(LFH, channel, lfhOffset)
+                read(LFH, channel, lfhOffset, lfhBuffer)
                         .orElseThrow(() -> new ZipException("Local file header for entry is not where it should be"));
 
-                // TODO: may want to compare the entries (by name?), as we could have landed on another one by chance
-
-                sequentialOffset +=
-                        extraFieldLength +
-                                cfh.getUnsignedShort("fileCommentLength");
+                sequentialOffset += extraFieldLength +
+                        cfh.getUnsignedShort("fileCommentLength");
             }
 
             applyWrites(writeQueue, channel); // TODO: move writing out of this method
