@@ -20,3 +20,6 @@ jobs:
           cache: maven
       - name: Build with Maven
         run: mvn -ntp -B install
+      - name: Run our test suite
+        run: |
+          src/it/resources/run-integration-test.sh

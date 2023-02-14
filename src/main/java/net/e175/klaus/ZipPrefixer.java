@@ -271,6 +271,8 @@ public final class ZipPrefixer {
                 read(LFH, channel, lfhOffset)
                         .orElseThrow(() -> new ZipException("Local file header for entry is not where it should be"));
 
+                // TODO: may want to compare the entries (by name?), as we could have landed on another one by chance
+
                 sequentialOffset +=
                         extraFieldLength +
                                 cfh.getUnsignedShort("fileCommentLength");
@@ -315,10 +317,9 @@ public final class ZipPrefixer {
                 .collect(Collectors.toList());
 
         final long prefixesLength = applyPrefixes(zipfile, paths);
-        System.out.printf("prefixed %d bytes%n", prefixesLength);
 
         adjustZipOffsets(zipfile, prefixesLength);
-        System.out.println("offsets adjusted");
+        System.out.printf("prefixed %d bytes on %s%n", prefixesLength, zipfile);
     }
 
 }
