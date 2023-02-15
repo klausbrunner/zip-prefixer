@@ -85,6 +85,7 @@ class BinaryMapperTest {
         }
     }
 
+    @Test
     void testSeek2() throws IOException {
         Path f = prepareTestFile("test-2.bin");
 

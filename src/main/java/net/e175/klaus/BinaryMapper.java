@@ -18,7 +18,7 @@ import java.util.logging.Logger;
  * asserts only. Most classes here could be replaced nicely by records, cutting the LOC by half or so, but we're
  * staying at Java 8 for now.
  */
-class BinaryMapper {
+final class BinaryMapper {
     private static final Logger LOG = Logger.getLogger(BinaryMapper.class.getName());
 
     private BinaryMapper() {
@@ -126,7 +126,7 @@ class BinaryMapper {
             this.buffer.order(spec.byteOrder);
             this.buffer.rewind();
             if (this.buffer.remaining() < spec.size) {
-                throw new IllegalArgumentException("buffer isn't large or filled enough to hold patternspec");
+                throw new IllegalArgumentException("buffer isn't large or filled enough to hold spec");
             }
         }
 

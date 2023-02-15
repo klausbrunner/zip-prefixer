@@ -1,7 +1,7 @@
 package net.e175.klaus;
 
-import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
@@ -107,7 +107,7 @@ public final class ZipPrefixer {
         Path original = targetPath.resolveSibling(targetPath.getFileName() + ".original");
         Files.move(targetPath, original);
         long prefixesLength = 0;
-        try (BufferedOutputStream out = new BufferedOutputStream(Files.newOutputStream(targetPath))) {
+        try (OutputStream out = Files.newOutputStream(targetPath)) {
             for (byte[] prefix : prefixes) {
                 out.write(prefix);
                 prefixesLength += prefix.length;
@@ -135,7 +135,7 @@ public final class ZipPrefixer {
         Path original = targetPath.resolveSibling(targetPath.getFileName() + ".original");
         Files.move(targetPath, original);
         long prefixesLength = 0;
-        try (BufferedOutputStream out = new BufferedOutputStream(Files.newOutputStream(targetPath))) {
+        try (OutputStream out = Files.newOutputStream(targetPath)) {
             for (Path prefixFile : prefixFiles) {
                 prefixesLength += Files.copy(prefixFile, out);
             }

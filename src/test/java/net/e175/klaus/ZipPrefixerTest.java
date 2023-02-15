@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 
 import static net.e175.klaus.TestUtil.prepareTestFile;
@@ -29,6 +30,19 @@ class ZipPrefixerTest {
         assertEquals("Lorem ipsum dolor sit.", strings.get(0));
 
         assertEquals(12, prefixLength);
+    }
+
+    @Test
+    void appliesPrefixFile() throws IOException {
+        Path f = prepareTestFile("bla.txt");
+        Path f2 = prepareTestFile("bla.txt");
+
+        long prefixLength = ZipPrefixer.applyPrefixes(f, Collections.singletonList(f2));
+
+        List<String> strings = Files.readAllLines(f);
+        assertEquals("dolor sit.dolor sit.", strings.get(0));
+
+        assertEquals(f2.toFile().length(), prefixLength);
     }
 
     @Test
