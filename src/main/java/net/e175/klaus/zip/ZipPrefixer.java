@@ -94,7 +94,7 @@ public final class ZipPrefixer {
      * Prepend prefix(es) to an existing file. This method does not care about file types or contents, it just
      * mechanically glues the bytes together.
      *
-     * @param targetPath Target file. Must be writeable, in a writeable directory.
+     * @param targetPath Target file. Must be writeable, in a writeable directory with enough space to hold a temporary copy.
      * @param prefixes   Binary prefixes that will be sequentially written before the original file's contents.
      * @return Total number of bytes written as prefixes.
      * @throws IOException on I/O related errors
@@ -122,7 +122,7 @@ public final class ZipPrefixer {
      * Prepend prefix files to an existing file. This method does not care about file types or contents, it just
      * mechanically glues the bytes together.
      *
-     * @param targetPath  Target file. Must be writeable, in a writeable directory.
+     * @param targetPath  Target file. Must be writeable, in a writeable directory with enough space to hold a temporary copy.
      * @param prefixFiles Prefix files that will be sequentially written before the original file's contents.
      * @return Total number of bytes written as prefixes.
      * @throws IOException on I/O related errors

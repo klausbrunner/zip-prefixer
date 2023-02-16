@@ -1,21 +1,15 @@
 # zip-prefixer
 
+![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://search.maven.org/search?q=g:net.e175.klaus%20a:zip-prefixer)
+
 Java library to prefix a ZIP format file with arbitrary data without breaking internal offsets or rebuilding from
-scratch.
-Java 8, zero runtime dependencies. Inspired by [clj-zip-meta](https://github.com/mbjarland/clj-zip-meta) and
+scratch. Java 8, zero runtime dependencies. Inspired by [clj-zip-meta](https://github.com/mbjarland/clj-zip-meta) and
 [really-executable-jars-maven-plugin](https://github.com/brianm/really-executable-jars-maven-plugin).
-
-Status: work in progress, proof-of-concept maturity. Open issues include:
-
-* Testing could be more extensive. Need a larger zoo of ZIPs created by various tools to get some confidence. Also, test special cases (e.g. encrypted ZIPs, multi-disk ZIPs) at least to ensure we fail-fast on those.
-* The code needs a serious refactoring (ZIP64 support made it messy).
-* Performance is unclear. It's apparently not horrible, and some care has been taken to avoid memory
-  bloat and excessive I/O, but it hasn't been examined seriously.
 
 ## A note on ZIP64 support
 
 Despite being introduced more than 20 years ago (as of this writing), ZIP64 extension support is spotty and 
-inconsistent in many implementations -- not just in Java! Different tools will create different outputs. Different tools 
+inconsistent in many implementations. Different tools will create different outputs. Different tools 
 will completely disagree on whether a given archive is corrupt or correct. This includes Info-ZIP's _zip_, _unzip_, and 
 _zipinfo_ commands, the _zipdetails_ command, the _7z_ CLI, the _zipfile_ package in Python 3.10, various Java libraries 
 (commons-compress, zip4j, as well as the standard library's ZIP classes), IO::Compress::Zip for Perl, Go's archive/zip

@@ -24,6 +24,9 @@
         <basepom.check.skip-license>true</basepom.check.skip-license>
         <basepom.check.fail-checkstyle>false</basepom.check.fail-checkstyle>
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>
+
+        <scmCommentPrefix>build: [maven-release-plugin] [skip ci]</scmCommentPrefix>
+        <tagNameFormat>v@{project.version}</tagNameFormat>
     </properties>
 
     <licenses>
