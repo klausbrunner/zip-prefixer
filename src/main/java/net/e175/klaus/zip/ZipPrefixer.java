@@ -5,7 +5,10 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -145,8 +148,13 @@ public final class ZipPrefixer {
         return prefixesLength;
     }
 
+
     /**
-     * Validate offsets in ZIP file. Throws exception if they aren't correct.
+     * Validate current offsets in ZIP file.
+     *
+     * @param targetPath ZIP file to process.
+     * @throws IOException On I/O errors.
+     * @throws ZipException On errors in the ZIP's integrity.
      */
     public static void validateZipOffsets(Path targetPath) throws IOException {
         adjustZipOffsets(targetPath, 0);
@@ -154,138 +162,152 @@ public final class ZipPrefixer {
 
     /**
      * Adjust offsets in ZIP file (with validation). If adjustment is 0, don't write anything, just validate.
+     *
+     * @param targetPath ZIP file to process.
+     * @param adjustment Offset to add to the current offsets.
+     * @throws IOException On I/O errors.
+     * @throws ZipException On errors in the ZIP's integrity.
      */
     public static void adjustZipOffsets(Path targetPath, long adjustment) throws IOException {
         final boolean mustAdjust = adjustment != 0;
 
-        final OpenOption[] openOpts = mustAdjust ?
-                new OpenOption[]{StandardOpenOption.READ, StandardOpenOption.WRITE} :
-                new OpenOption[]{};
-
-        final Queue<Write> writeQueue = mustAdjust ? createWriteQueue() : null;
-
-        try (final SeekableByteChannel channel = Files.newByteChannel(targetPath, openOpts)) {
-            // find EOCDR first; assuming it's at the very end of file or close to it
-            PatternInstance eocdr = seek(EOCDR, channel, Long.MAX_VALUE, false)
-                    .orElseThrow(() -> new ZipException("Unable to locate EOCDR. Probably not a ZIP file."));
-            LOG.fine(() -> String.format("EOCDR found at offset: \"0x%08X\"", eocdr.position));
-            boolean requiresZip64 = false;
-
-            long cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
-            if (cdOffset != 0xFF_FF_FF_FFL) {
-                if (mustAdjust) {
-                    cdOffset += adjustment;
-                    writeQueue.add(eocdr.writeInt("offsetOfStartOfCD", (int) cdOffset));
-                }
-            } else {
-                requiresZip64 = true;
-            }
-
-            long numberOfCdEntries = eocdr.getUnsignedShort("numberOfEntriesInCDonThisDisk");
-            if (numberOfCdEntries == 0xFF_FF) {
-                requiresZip64 = true;
-            }
-
-            // see if we can find a ZIP64 central directory (regardless of whether it's required or not)
-            // first, find the ZIP 64 EOCDL
-            Optional<PatternInstance> zip64eocdlO = read(ZIP64_EOCDL, channel, eocdr.position - ZIP64_EOCDL.size);
-            if (!zip64eocdlO.isPresent() && requiresZip64) {
-                throw new ZipException("This archive lacks a ZIP64 EOCDL, which is required according to its EOCDR.");
-            } else if (zip64eocdlO.isPresent()) {
-                // from this point on, we should definitely expect a ZIP64 central record
-                // now get the ZIP64 EOCDR
-                PatternInstance zip64eocdl = zip64eocdlO.get();
-                LOG.fine(() -> String.format("ZIP64 EOCDL found at offset: \"0x%08X\"", zip64eocdl.position));
-
-                cdOffset = zip64eocdl.getLong("relativeOffsetOfZip64EOCDR");
-                if (mustAdjust) {
-                    cdOffset += adjustment;
-                    writeQueue.add(zip64eocdl.writeLong("relativeOffsetOfZip64EOCDR", cdOffset));
-                }
-
-                PatternInstance zip64eocdr = read(ZIP64_EOCDR, channel, cdOffset).orElseThrow(() ->
-                        new ZipException("Unable to find the ZIP64 EOCDR in the location given by ZIP64 EOCDL."));
-                LOG.fine(() -> String.format("ZIP64 EOCDR found at offset: \"0x%08X\"", zip64eocdr.position));
-
-                cdOffset = zip64eocdr.getLong("offsetOfStartOfCD");
-                if (mustAdjust) {
-                    cdOffset += adjustment;
-                    writeQueue.add(zip64eocdr.writeLong("offsetOfStartOfCD", cdOffset));
-                }
-
-                numberOfCdEntries = zip64eocdr.getLong("numberOfEntriesInCDonThisDisk");
-            }
-
-            // now walk through central directory entries
-            long sequentialOffset = cdOffset;
-            final ByteBuffer cfhBuffer = CFH.bufferFor();
-            final ByteBuffer lfhBuffer = LFH.bufferFor();
-            for (int i = 0; i < numberOfCdEntries; i++) {
-                PatternInstance cfh = read(CFH, channel, sequentialOffset, cfhBuffer)
-                        .orElseThrow(() -> new ZipException("Central file header for entry is not where it should be"));
-                LOG.fine(() -> String.format("CFH entry found at offset: \"0x%08X\"", cfh.position));
-
-                // skip over filename and position on any extra fields
-                sequentialOffset += cfh.spec.size + cfh.getUnsignedShort("fileNameLength");
-                final int extraFieldLength = cfh.getUnsignedShort("extraFieldLength");
-
-                // now look at the offset of the local header. in simple cases, this is right inside the CDR,
-                // in ZIP64 cases it *could* be in the extended field.
-                long lfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
-                if (lfhOffset != 0xFF_FF_FF_FFL) {
-                    if (mustAdjust) {
-                        lfhOffset += adjustment;
-                        writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader", (int) lfhOffset));
-                    }
-                } else {
-                    // ZIP64 offset it is; now we need to determine the expected format of the ZIP64 EIEF,
-                    // which depends on the fields set to all-1s.
-                    List<FieldSpec> requiredFieldsInEIEF = new ArrayList<>(5);
-                    requiredFieldsInEIEF.add(ZIP64_EIEF_SIGNATURE);
-                    requiredFieldsInEIEF.add(FieldSpec.of(2, "size"));
-                    if (cfh.getUnsignedInt("uncompressedSize") == 0xFF_FF_FF_FFL) {
-                        requiredFieldsInEIEF.add(FieldSpec.of(8, "uncompressedSize"));
-                    }
-                    if (cfh.getUnsignedInt("compressedSize") == 0xFF_FF_FF_FFL) {
-                        requiredFieldsInEIEF.add(FieldSpec.of(8, "compressedSize"));
-                    }
-                    requiredFieldsInEIEF.add(FieldSpec.of(8, "relativeOffsetOfLocalHeader"));
-
-                    PatternSpec requiredZip64EIEF = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
-                            requiredFieldsInEIEF.toArray(new FieldSpec[0]));
-
-                    PatternInstance zip64eief = seek(requiredZip64EIEF, channel, sequentialOffset,
-                            // extra fields are separated by header (2+2) plus size
-                            (patternInstance -> (long) patternInstance.getUnsignedShort("size") + 4),
-                            sequentialOffset,
-                            sequentialOffset + extraFieldLength).orElseThrow(
-                            () -> new ZipException("missing ZIP64 extra fields in CFH"));
-
-                    // additional validation of length
-                    if (zip64eief.getUnsignedShort("size")
-                            < (requiredZip64EIEF.nameToFSI.size() - 2) * 8) {
-                        throw new ZipException("ZIP64 extra fields in CFH seem to exist, but are too small.");
-                    }
-
-                    lfhOffset = zip64eief.getLong("relativeOffsetOfLocalHeader");
-                    if (mustAdjust) {
-                        lfhOffset += adjustment;
-                        writeQueue.add(zip64eief.writeLong("relativeOffsetOfLocalHeader", lfhOffset));
-                    }
-                }
-
-                PatternInstance lfh = read(LFH, channel, lfhOffset, lfhBuffer)
-                        .orElseThrow(() -> new ZipException("Local file header for entry is not where it should be"));
-                LOG.fine(() -> String.format("LFH entry found at offset: \"0x%08X\"", lfh.position));
-
-                sequentialOffset += extraFieldLength +
-                        cfh.getUnsignedShort("fileCommentLength");
-            }
-
-            if (mustAdjust) {
-                applyWrites(writeQueue, channel); // TODO: move writing out of this method
+        /* This implementation clearly separates the read and write phases to reduce the risk of ending up
+           with a half-broken file: no byte is written until all offsets have been checked. This comes at
+           the cost of higher memory usage to buffer the write data until it's written out. This memory usage
+           is a linear function of the number of entries (files) in the ZIP.
+         */
+        final Queue<Write> writeQueue;
+        try (final SeekableByteChannel channel = Files.newByteChannel(targetPath)) {
+            writeQueue = analyseOffsets(mustAdjust, adjustment, channel);
+        }
+        if (mustAdjust) {
+            try (final SeekableByteChannel channel = Files.newByteChannel(targetPath, StandardOpenOption.WRITE)) {
+                applyWrites(writeQueue, channel);
             }
         }
+    }
+
+    private static Queue<Write> analyseOffsets(boolean mustAdjust, long adjustment, SeekableByteChannel channel) throws IOException {
+        final Queue<Write> writeQueue = mustAdjust ? createWriteQueue() : null;
+
+        // find EOCDR first; assuming it's at the very end of file or close to it
+        PatternInstance eocdr = seek(EOCDR, channel, Long.MAX_VALUE, false)
+                .orElseThrow(() -> new ZipException("Unable to locate EOCDR. Probably not a ZIP file."));
+        LOG.fine(() -> String.format("EOCDR found at offset: \"0x%08X\"", eocdr.position));
+        boolean requiresZip64 = false;
+
+        long cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
+        if (cdOffset != 0xFF_FF_FF_FFL) {
+            if (mustAdjust) {
+                cdOffset += adjustment;
+                writeQueue.add(eocdr.writeInt("offsetOfStartOfCD", (int) cdOffset));
+            }
+        } else {
+            requiresZip64 = true;
+        }
+
+        long numberOfCdEntries = eocdr.getUnsignedShort("numberOfEntriesInCDonThisDisk");
+        if (numberOfCdEntries == 0xFF_FF) {
+            requiresZip64 = true;
+        }
+
+        // see if we can find a ZIP64 central directory (regardless of whether it's required or not)
+        // first, find the ZIP 64 EOCDL
+        Optional<PatternInstance> zip64eocdlO = read(ZIP64_EOCDL, channel, eocdr.position - ZIP64_EOCDL.size);
+        if (!zip64eocdlO.isPresent() && requiresZip64) {
+            throw new ZipException("This archive lacks a ZIP64 EOCDL, which is required according to its EOCDR.");
+        } else if (zip64eocdlO.isPresent()) {
+            // from this point on, we should definitely expect a ZIP64 central record
+            // now get the ZIP64 EOCDR
+            PatternInstance zip64eocdl = zip64eocdlO.get();
+            LOG.fine(() -> String.format("ZIP64 EOCDL found at offset: \"0x%08X\"", zip64eocdl.position));
+
+            cdOffset = zip64eocdl.getLong("relativeOffsetOfZip64EOCDR");
+            if (mustAdjust) {
+                cdOffset += adjustment;
+                writeQueue.add(zip64eocdl.writeLong("relativeOffsetOfZip64EOCDR", cdOffset));
+            }
+
+            PatternInstance zip64eocdr = read(ZIP64_EOCDR, channel, cdOffset).orElseThrow(() ->
+                    new ZipException("Unable to find the ZIP64 EOCDR in the location given by ZIP64 EOCDL."));
+            LOG.fine(() -> String.format("ZIP64 EOCDR found at offset: \"0x%08X\"", zip64eocdr.position));
+
+            cdOffset = zip64eocdr.getLong("offsetOfStartOfCD");
+            if (mustAdjust) {
+                cdOffset += adjustment;
+                writeQueue.add(zip64eocdr.writeLong("offsetOfStartOfCD", cdOffset));
+            }
+
+            numberOfCdEntries = zip64eocdr.getLong("numberOfEntriesInCDonThisDisk");
+        }
+
+        // now walk through central directory entries
+        long sequentialOffset = cdOffset;
+        final ByteBuffer cfhBuffer = CFH.bufferFor();
+        final ByteBuffer lfhBuffer = LFH.bufferFor();
+        for (int i = 0; i < numberOfCdEntries; i++) {
+            PatternInstance cfh = read(CFH, channel, sequentialOffset, cfhBuffer)
+                    .orElseThrow(() -> new ZipException("Central file header for entry is not where it should be"));
+            LOG.fine(() -> String.format("CFH entry found at offset: \"0x%08X\"", cfh.position));
+
+            // skip over filename and position on any extra fields
+            sequentialOffset += cfh.spec.size + cfh.getUnsignedShort("fileNameLength");
+            final int extraFieldLength = cfh.getUnsignedShort("extraFieldLength");
+
+            // now look at the offset of the local header. in simple cases, this is right inside the CDR,
+            // in ZIP64 cases it *could* be in the extended field.
+            long lfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
+            if (lfhOffset != 0xFF_FF_FF_FFL) {
+                if (mustAdjust) {
+                    lfhOffset += adjustment;
+                    writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader", (int) lfhOffset));
+                }
+            } else {
+                // ZIP64 offset it is; now we need to determine the expected format of the ZIP64 EIEF,
+                // which depends on the fields set to all-1s.
+                List<FieldSpec> requiredFieldsInEIEF = new ArrayList<>(5);
+                requiredFieldsInEIEF.add(ZIP64_EIEF_SIGNATURE);
+                requiredFieldsInEIEF.add(FieldSpec.of(2, "size"));
+                if (cfh.getUnsignedInt("uncompressedSize") == 0xFF_FF_FF_FFL) {
+                    requiredFieldsInEIEF.add(FieldSpec.of(8, "uncompressedSize"));
+                }
+                if (cfh.getUnsignedInt("compressedSize") == 0xFF_FF_FF_FFL) {
+                    requiredFieldsInEIEF.add(FieldSpec.of(8, "compressedSize"));
+                }
+                requiredFieldsInEIEF.add(FieldSpec.of(8, "relativeOffsetOfLocalHeader"));
+
+                PatternSpec requiredZip64EIEF = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
+                        requiredFieldsInEIEF.toArray(new FieldSpec[0]));
+
+                PatternInstance zip64eief = seek(requiredZip64EIEF, channel, sequentialOffset,
+                        // extra fields are separated by header (2+2) plus size
+                        (patternInstance -> (long) patternInstance.getUnsignedShort("size") + 4),
+                        sequentialOffset,
+                        sequentialOffset + extraFieldLength).orElseThrow(
+                        () -> new ZipException("missing ZIP64 extra fields in CFH"));
+
+                // additional validation of length
+                if (zip64eief.getUnsignedShort("size")
+                        < (requiredZip64EIEF.nameToFSI.size() - 2) * 8) {
+                    throw new ZipException("ZIP64 extra fields in CFH seem to exist, but are too small.");
+                }
+
+                lfhOffset = zip64eief.getLong("relativeOffsetOfLocalHeader");
+                if (mustAdjust) {
+                    lfhOffset += adjustment;
+                    writeQueue.add(zip64eief.writeLong("relativeOffsetOfLocalHeader", lfhOffset));
+                }
+            }
+
+            PatternInstance lfh = read(LFH, channel, lfhOffset, lfhBuffer)
+                    .orElseThrow(() -> new ZipException("Local file header for entry is not where it should be"));
+            LOG.fine(() -> String.format("LFH entry found at offset: \"0x%08X\"", lfh.position));
+
+            sequentialOffset += extraFieldLength +
+                    cfh.getUnsignedShort("fileCommentLength");
+        }
+
+        return writeQueue;
     }
 
     /**

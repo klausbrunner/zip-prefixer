@@ -3,8 +3,40 @@
 ![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://search.maven.org/search?q=g:net.e175.klaus%20a:zip-prefixer)
 
 Java library to prefix a ZIP format file with arbitrary data without breaking internal offsets or rebuilding from
-scratch. Java 8, zero runtime dependencies. Inspired by [clj-zip-meta](https://github.com/mbjarland/clj-zip-meta) and
-[really-executable-jars-maven-plugin](https://github.com/brianm/really-executable-jars-maven-plugin).
+scratch. Runs on Java 8 or newer, zero runtime dependencies.
+
+## Why would I need this?
+
+As a poor man's steganography, to create self-extracting ZIPs or, more likely for a Java library, [self-executing JARs](https://skife.org/java/unix/2011/06/20/really_executable_jars.html).
+
+The ZIP format itself allows arbitrary content before the actual ZIP data. You can also do this with existing ZIPs 
+by simply concatenating the additional bytes and the original ZIP file together. This, however, invalidates the internal file 
+offsets and while most ZIP readers (including Java's jar command) can cope with this corruption in the case of simple 
+ZIP files, they tend to fail with modern ZIP64s. 
+
+One solution is to rebuild the ZIP file using an archiver library that knows about prefixes (such as Apache commons compress). 
+Another is to simply correct the offsets, which means the original ZIP remains mostly unchanged and the whole process 
+is very fast. This is the point of this library.
+
+## Usage
+````java
+import net.e175.klaus.zip.ZipPrefixer;
+
+
+Path zipFile = Paths.get("test.zip");
+
+// optional: check integrity of original ZIP file before we proceed
+ZipPrefixer.validateZipOffsets(zipFile);
+
+// add a prefix to the file (can be one or more byte arrays or files)
+long addedBytes = ZipPrefixer.applyPrefixes(zipFile, "hello, world".getBytes(StandardCharsets.UTF_8));
+
+// fix the offsets in the ZIP
+ZipPrefixer.adjustZipOffsets(f, addedBytes);
+
+// optional belt-and-suspenders: check integrity of the resulting ZIP file again
+ZipPrefixer.validateZipOffsets(zipFile);
+````
 
 ## A note on ZIP64 support
 
