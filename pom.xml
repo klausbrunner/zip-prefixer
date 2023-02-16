@@ -6,7 +6,7 @@
 
     <groupId>net.e175.klaus</groupId>
     <artifactId>zip-prefixer</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0-SNAPSHOT</version>
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
@@ -57,7 +57,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>net.e175.klaus.ZipPrefixer</mainClass>
+                            <mainClass>net.e175.klaus.zip.ZipPrefixer</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

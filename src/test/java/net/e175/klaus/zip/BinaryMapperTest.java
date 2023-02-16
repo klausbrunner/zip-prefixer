@@ -1,4 +1,4 @@
-package net.e175.klaus;
+package net.e175.klaus.zip;
 
 import org.junit.jupiter.api.Test;
 
@@ -13,8 +13,8 @@ import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 import java.util.Queue;
 
-import static net.e175.klaus.BinaryMapper.*;
-import static net.e175.klaus.TestUtil.prepareTestFile;
+import static net.e175.klaus.zip.BinaryMapper.*;
+import static net.e175.klaus.zip.TestUtil.prepareTestFile;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BinaryMapperTest {

@@ -1,4 +1,4 @@
-package net.e175.klaus;
+package net.e175.klaus.zip;
 
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipFile;

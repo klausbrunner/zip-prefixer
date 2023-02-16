@@ -1,4 +1,4 @@
-package net.e175.klaus;
+package net.e175.klaus.zip;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;

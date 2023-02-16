@@ -1,4 +1,4 @@
-package net.e175.klaus;
+package net.e175.klaus.zip;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 
-import static net.e175.klaus.TestUtil.prepareTestFile;
+import static net.e175.klaus.zip.TestUtil.prepareTestFile;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 

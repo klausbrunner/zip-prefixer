@@ -1,4 +1,4 @@
-package net.e175.klaus;
+package net.e175.klaus.zip;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -11,7 +11,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipException;
 
-import static net.e175.klaus.BinaryMapper.*;
+import static net.e175.klaus.zip.BinaryMapper.*;
 
 public final class ZipPrefixer {
 
@@ -156,22 +156,24 @@ public final class ZipPrefixer {
      * Adjust offsets in ZIP file (with validation). If adjustment is 0, don't write anything, just validate.
      */
     public static void adjustZipOffsets(Path targetPath, long adjustment) throws IOException {
-        final OpenOption[] openOpts = adjustment != 0 ?
+        final boolean mustAdjust = adjustment != 0;
+
+        final OpenOption[] openOpts = mustAdjust ?
                 new OpenOption[]{StandardOpenOption.READ, StandardOpenOption.WRITE} :
                 new OpenOption[]{};
 
-        final Queue<Write> writeQueue = createWriteQueue();
+        final Queue<Write> writeQueue = mustAdjust ? createWriteQueue() : null;
 
         try (final SeekableByteChannel channel = Files.newByteChannel(targetPath, openOpts)) {
             // find EOCDR first; assuming it's at the very end of file or close to it
             PatternInstance eocdr = seek(EOCDR, channel, Long.MAX_VALUE, false)
                     .orElseThrow(() -> new ZipException("Unable to locate EOCDR. Probably not a ZIP file."));
-            LOG.fine(String.format("EOCDR found at offset: \"0x%08X\"", eocdr.position));
+            LOG.fine(() -> String.format("EOCDR found at offset: \"0x%08X\"", eocdr.position));
             boolean requiresZip64 = false;
 
             long cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
             if (cdOffset != 0xFF_FF_FF_FFL) {
-                if (adjustment != 0) {
+                if (mustAdjust) {
                     cdOffset += adjustment;
                     writeQueue.add(eocdr.writeInt("offsetOfStartOfCD", (int) cdOffset));
                 }
@@ -193,17 +195,20 @@ public final class ZipPrefixer {
                 // from this point on, we should definitely expect a ZIP64 central record
                 // now get the ZIP64 EOCDR
                 PatternInstance zip64eocdl = zip64eocdlO.get();
-                LOG.fine(String.format("ZIP64 EOCDL found at offset: \"0x%08X\"", zip64eocdl.position));
+                LOG.fine(() -> String.format("ZIP64 EOCDL found at offset: \"0x%08X\"", zip64eocdl.position));
+
                 cdOffset = zip64eocdl.getLong("relativeOffsetOfZip64EOCDR");
-                if (adjustment != 0) {
+                if (mustAdjust) {
                     cdOffset += adjustment;
                     writeQueue.add(zip64eocdl.writeLong("relativeOffsetOfZip64EOCDR", cdOffset));
                 }
 
                 PatternInstance zip64eocdr = read(ZIP64_EOCDR, channel, cdOffset).orElseThrow(() ->
                         new ZipException("Unable to find the ZIP64 EOCDR in the location given by ZIP64 EOCDL."));
+                LOG.fine(() -> String.format("ZIP64 EOCDR found at offset: \"0x%08X\"", zip64eocdr.position));
+
                 cdOffset = zip64eocdr.getLong("offsetOfStartOfCD");
-                if (adjustment != 0) {
+                if (mustAdjust) {
                     cdOffset += adjustment;
                     writeQueue.add(zip64eocdr.writeLong("offsetOfStartOfCD", cdOffset));
                 }
@@ -218,6 +223,7 @@ public final class ZipPrefixer {
             for (int i = 0; i < numberOfCdEntries; i++) {
                 PatternInstance cfh = read(CFH, channel, sequentialOffset, cfhBuffer)
                         .orElseThrow(() -> new ZipException("Central file header for entry is not where it should be"));
+                LOG.fine(() -> String.format("CFH entry found at offset: \"0x%08X\"", cfh.position));
 
                 // skip over filename and position on any extra fields
                 sequentialOffset += cfh.spec.size + cfh.getUnsignedShort("fileNameLength");
@@ -227,7 +233,7 @@ public final class ZipPrefixer {
                 // in ZIP64 cases it *could* be in the extended field.
                 long lfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
                 if (lfhOffset != 0xFF_FF_FF_FFL) {
-                    if (adjustment != 0) {
+                    if (mustAdjust) {
                         lfhOffset += adjustment;
                         writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader", (int) lfhOffset));
                     }
@@ -262,20 +268,23 @@ public final class ZipPrefixer {
                     }
 
                     lfhOffset = zip64eief.getLong("relativeOffsetOfLocalHeader");
-                    if (adjustment != 0) {
+                    if (mustAdjust) {
                         lfhOffset += adjustment;
                         writeQueue.add(zip64eief.writeLong("relativeOffsetOfLocalHeader", lfhOffset));
                     }
                 }
 
-                read(LFH, channel, lfhOffset, lfhBuffer)
+                PatternInstance lfh = read(LFH, channel, lfhOffset, lfhBuffer)
                         .orElseThrow(() -> new ZipException("Local file header for entry is not where it should be"));
+                LOG.fine(() -> String.format("LFH entry found at offset: \"0x%08X\"", lfh.position));
 
                 sequentialOffset += extraFieldLength +
                         cfh.getUnsignedShort("fileCommentLength");
             }
 
-            applyWrites(writeQueue, channel); // TODO: move writing out of this method
+            if (mustAdjust) {
+                applyWrites(writeQueue, channel); // TODO: move writing out of this method
+            }
         }
     }
 
@@ -313,10 +322,19 @@ public final class ZipPrefixer {
                 .map(Paths::get)
                 .collect(Collectors.toList());
 
-        final long prefixesLength = applyPrefixes(zipfile, paths);
-
-        adjustZipOffsets(zipfile, prefixesLength);
-        System.out.printf("prefixed %d bytes on %s%n", prefixesLength, zipfile);
+        final long startTime = System.nanoTime();
+        long endTime;
+        if (paths.isEmpty()) {
+            validateZipOffsets(zipfile);
+            endTime = System.nanoTime();
+            System.out.print("validated offsets in " + zipfile);
+        } else {
+            final long prefixesLength = applyPrefixes(zipfile, paths);
+            adjustZipOffsets(zipfile, prefixesLength);
+            endTime = System.nanoTime();
+            System.out.printf("prefixed %d bytes on %s", prefixesLength, zipfile);
+        }
+        System.out.printf(" in %.1f ms %n", (endTime - startTime) / 1e6);
     }
 
 }
