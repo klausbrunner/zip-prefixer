@@ -11,12 +11,12 @@ As a poor man's steganography, to create self-extracting ZIPs or, more likely fo
 
 The ZIP format itself allows arbitrary content before the actual ZIP data. You can also do this with existing ZIPs 
 by simply concatenating the additional bytes and the original ZIP file together. This, however, invalidates the internal file 
-offsets and while most ZIP readers (including Java's jar command) can cope with this corruption in the case of simple 
+offsets and while many ZIP readers (including Java's jar command) can cope with this corruption in the case of simple 
 ZIP files, they tend to fail with modern ZIP64s. 
 
 One solution is to rebuild the ZIP file using an archiver library that knows about prefixes (such as Apache commons compress). 
 Another is to simply correct the offsets, which means the original ZIP remains mostly unchanged and the whole process 
-is very fast. This is the point of this library.
+is very fast. This is the goal of this library.
 
 ## Usage
 ````java
@@ -37,6 +37,12 @@ ZipPrefixer.adjustZipOffsets(f, addedBytes);
 // optional belt-and-suspenders: check integrity of the resulting ZIP file again
 ZipPrefixer.validateZipOffsets(zipFile);
 ````
+## Implementation approach
+
+- Scan from the end for the End of Central Directory Record ("EndFirst" style as per [this terminology](https://gynvael.coldwind.pl/?id=682)). 
+- Strictly use the Central Directory to find Local File Headers. No scanning around for LFHs. If the LFH isn't exactly where we expect it to be, abort.
+- No validation of LFH vs. CFH entry content (e.g. filename, sizes).
+- Rewrite only offsets, not a single other byte must be written.
 
 ## A note on ZIP64 support
 
@@ -45,7 +51,7 @@ inconsistent in many implementations. Different tools will create different outp
 will completely disagree on whether a given archive is corrupt or correct. This includes Info-ZIP's _zip_, _unzip_, and 
 _zipinfo_ commands, the _zipdetails_ command, the _7z_ CLI, the _zipfile_ package in Python 3.10, various Java libraries 
 (commons-compress, zip4j, as well as the standard library's ZIP classes), IO::Compress::Zip for Perl, Go's archive/zip
-and probably  countless others. There seems to be no one true standard reference implementation except perhaps PKWARE's 
+and probably countless others. There seems to be no one true standard reference implementation except perhaps PKWARE's 
 proprietary one, although the (somewhat dated) Info-ZIP tools and 7z seem to come close.
 
 A common theme is that only parts of ZIP64 are supported. This is no surprise because there are several ZIP64-related 

@@ -5,6 +5,7 @@
 # test JARs to get a second opinion. This can take a while!
 # Make sure to run mvn clean package before. This code assumes the 
 # executable jar is in target/ and the Maven repo is in ~/.m2
+# and 7z to be on the PATH.
 
 set -e
 
@@ -28,6 +29,7 @@ function check_prefix_doublecheck_jar() {
   unzip -qq -t "$tmpfile"
   zip -T "$tmpfile"
   jar -t -f "$tmpfile" >/dev/null
+  7z t "$tmpfile" >/dev/null
 
   rm "$tmpfile"
 }
@@ -40,12 +42,13 @@ function check_prefix_doublecheck_zipgz() {
   tmpfile="$workdir$(basename "$1" .gz)"
   gunzip "$tmpfile".gz
 
-  unzip -qq -t "$tmpfile"
+  unzip -qq -P secret -t "$tmpfile"
 
   java -jar "$zipfixer" "$tmpfile" "$prefixfile"
 
-  unzip -qq -t "$tmpfile"
-  zip -T "$tmpfile"
+  unzip -qq -P secret -t "$tmpfile"
+  # zip can't handle -T and get its password preset for encrypted archives :-(
+  7z t -psecret "$tmpfile" >/dev/null
 
   rm "$tmpfile"
 }

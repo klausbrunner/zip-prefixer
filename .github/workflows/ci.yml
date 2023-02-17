@@ -22,4 +22,5 @@ jobs:
         run: mvn -ntp -B install
       - name: Run our test suite
         run: |
+          sudo apt-get -y install p7zip
           src/it/resources/run-integration-test.sh
