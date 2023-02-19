@@ -5,12 +5,13 @@
 # test JARs to get a second opinion. This can take a while!
 # Make sure to run mvn clean package before. This code assumes the 
 # executable jar is in target/ and the Maven repo is in ~/.m2
-# and 7z to be on the PATH.
+# and zip, unzip, 7z are on the PATH.
 
 set -e
 
 # locate our executable JAR
 zipfixer=$(find target/*.jar | sort -r | head -1)
+echo "*** working with $zipfixer"
 
 workdir="${TMPDIR:-/tmp/}" # no $TMPDIR on Github Actions...
 jar_sourcedir="$HOME/.m2"
@@ -22,14 +23,14 @@ function check_prefix_doublecheck_jar() {
   cp "$1" "$workdir"
   tmpfile="$workdir$(basename "$1")"
 
-  unzip -qq -t "$tmpfile"
+  unzip -qq -t "$tmpfile" || exit 1
 
-  java -jar "$zipfixer" "$tmpfile" "$prefixfile"
+  java -jar "$zipfixer" "$tmpfile" "$prefixfile" || exit 1
 
-  unzip -qq -t "$tmpfile"
-  zip -T "$tmpfile"
-  jar -t -f "$tmpfile" >/dev/null
-  7z t "$tmpfile" >/dev/null
+  unzip -qq -t "$tmpfile" || exit 1
+  zip -T "$tmpfile" || exit 1
+  jar -t -f "$tmpfile" >/dev/null || exit 1
+  7z t "$tmpfile" >/dev/null || exit 1
 
   rm "$tmpfile"
 }
@@ -42,13 +43,13 @@ function check_prefix_doublecheck_zipgz() {
   tmpfile="$workdir$(basename "$1" .gz)"
   gunzip "$tmpfile".gz
 
-  unzip -qq -P secret -t "$tmpfile"
+  unzip -qq -P secret -t "$tmpfile" || exit 1
 
-  java -jar "$zipfixer" "$tmpfile" "$prefixfile"
+  java -jar "$zipfixer" "$tmpfile" "$prefixfile" || exit 1
 
-  unzip -qq -P secret -t "$tmpfile"
+  unzip -qq -P secret -t "$tmpfile" || exit 1
   # zip can't handle -T and get its password preset for encrypted archives :-(
-  7z t -psecret "$tmpfile" >/dev/null
+  7z t -psecret "$tmpfile" >/dev/null || exit 1
 
   rm "$tmpfile"
 }
