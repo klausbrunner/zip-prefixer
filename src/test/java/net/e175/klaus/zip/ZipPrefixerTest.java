@@ -53,6 +53,20 @@ class ZipPrefixerTest {
         ZipPrefixer.adjustZipOffsets(f, 0);
     }
 
+    @Test
+    void detectsBadOffsets() throws IOException {
+        Path f = prepareTestFile("simplest-zip64.jar");
+
+        TestUtil.looksLikeGoodZip(f);
+        ZipPrefixer.validateZipOffsets(f);
+        ZipPrefixer.applyPrefixes(f, "broken".getBytes(StandardCharsets.UTF_8));
+        try {
+            ZipPrefixer.validateZipOffsets(f);
+            fail("should have thrown an exception");
+        } catch(IOException ignored) {
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"simplest.jar", "simplest-zip64.jar", "single-1g-file.zip", "single-10g-file.zip",
             "2k-tiny-files.zip", "20k-tiny-files.zip", "small-forced-zip64.zip", "small-forced-zip64-python.zip",
@@ -64,15 +78,7 @@ class ZipPrefixerTest {
 
         final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
 
-        assertEquals(prefix.length, ZipPrefixer.applyPrefixes(f, prefix));
-
-        try {
-            ZipPrefixer.validateZipOffsets(f);
-            fail("should have thrown an exception, but didn't");
-        } catch (IOException ignored) {
-        }
-
-        ZipPrefixer.adjustZipOffsets(f, prefix.length);
+        ZipPrefixer.applyPrefixesToZip(f, prefix);
 
         ZipPrefixer.validateZipOffsets(f);
         TestUtil.looksLikeGoodZip(f);

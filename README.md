@@ -18,23 +18,16 @@ One solution is to rebuild the ZIP file using an archiver library that knows abo
 Another is to simply correct the offsets, which means the original ZIP remains mostly unchanged and the whole process 
 is very fast. This is the goal of this library.
 
-## Usage
+## Basic usage
 ````java
 import net.e175.klaus.zip.ZipPrefixer;
 
-
 Path zipFile = Paths.get("test.zip");
 
-// optional: check integrity of original ZIP file before we proceed
-ZipPrefixer.validateZipOffsets(zipFile);
-
 // add a prefix to the file (can be one or more byte arrays or files)
-long addedBytes = ZipPrefixer.applyPrefixes(zipFile, "hello, world".getBytes(StandardCharsets.UTF_8));
+long addedBytes = ZipPrefixer.applyPrefixesToZip(zipFile, "hello, world".getBytes(StandardCharsets.UTF_8));
 
-// fix the offsets in the ZIP
-ZipPrefixer.adjustZipOffsets(f, addedBytes);
-
-// optional belt-and-suspenders: check integrity of the resulting ZIP file again
+// optional: check integrity of the resulting ZIP file again
 ZipPrefixer.validateZipOffsets(zipFile);
 ````
 ## Implementation approach

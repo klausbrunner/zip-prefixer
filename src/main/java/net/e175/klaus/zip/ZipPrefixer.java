@@ -5,10 +5,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -17,18 +14,6 @@ import java.util.zip.ZipException;
 import static net.e175.klaus.zip.BinaryMapper.*;
 
 public final class ZipPrefixer {
-
-    private ZipPrefixer() {
-    }
-
-    private static final Logger LOG = Logger.getLogger(ZipPrefixer.class.getName());
-
-    /* These specs are based on
-            APPNOTE.TXT - .ZIP File Format Specification
-            Version: 6.3.10
-            Revised: Nov 01, 2022
-            https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
-    */
 
     static final PatternSpec EOCDR = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
             FieldSpec.of(4, "eocdrSignature", new byte[]{0x50, 0x4b, 0x05, 0x06}),
@@ -39,7 +24,6 @@ public final class ZipPrefixer {
             FieldSpec.of(4, "sizeOfCD"),
             FieldSpec.of(4, "offsetOfStartOfCD"),
             FieldSpec.of(2, "commentLength"));
-
     static final PatternSpec CFH = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
             FieldSpec.of(4, "centralFileHeader", new byte[]{0x50, 0x4b, 0x01, 0x02}),
             FieldSpec.of(2, "versionMadeBy"),
@@ -59,6 +43,12 @@ public final class ZipPrefixer {
             FieldSpec.of(4, "externalFileAttributes"),
             FieldSpec.of(4, "relativeOffsetOfLocalHeader"));
 
+    /* These specs are based on
+            APPNOTE.TXT - .ZIP File Format Specification
+            Version: 6.3.10
+            Revised: Nov 01, 2022
+            https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
+    */
     static final PatternSpec LFH = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
             FieldSpec.of(4, "centralFileHeader", new byte[]{0x50, 0x4b, 0x03, 0x04}),
             FieldSpec.of(2, "versionNeededToExtract"),
@@ -71,13 +61,11 @@ public final class ZipPrefixer {
             FieldSpec.of(4, "uncompressedSize"),
             FieldSpec.of(2, "fileNameLength"),
             FieldSpec.of(2, "extraFieldLength"));
-
     static final PatternSpec ZIP64_EOCDL = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
             FieldSpec.of(4, "zip64EOCDLSignature", new byte[]{0x50, 0x4b, 0x06, 0x07}),
             FieldSpec.of(4, "numberOfDiskWithStartOfZip64EOCDL"),
             FieldSpec.of(8, "relativeOffsetOfZip64EOCDR"),
             FieldSpec.of(4, "totalNumberOfDisks"));
-
     static final PatternSpec ZIP64_EOCDR = new PatternSpec(ByteOrder.LITTLE_ENDIAN,
             FieldSpec.of(4, "zip64EOCDLSignature", new byte[]{0x50, 0x4b, 0x06, 0x06}),
             FieldSpec.of(8, "sizeOfZip64eocdr"),
@@ -89,9 +77,40 @@ public final class ZipPrefixer {
             FieldSpec.of(8, "totalNumberOfEntriesInCD"),
             FieldSpec.of(8, "sizeOfCD"),
             FieldSpec.of(8, "offsetOfStartOfCD"));
-
     // Zip64 Extended Information Extra Field
     static final FieldSpec ZIP64_EIEF_SIGNATURE = FieldSpec.of(2, "zip64EIEFSignature", new byte[]{0x01, 0x00});
+    private static final Logger LOG = Logger.getLogger(ZipPrefixer.class.getName());
+
+    private ZipPrefixer() {
+    }
+
+    /**
+     * Prepend prefix(es) to an existing ZIP format file, adjusting internal offsets as needed. This method tries to be
+     * as cautious as possible by verifying the original ZIP file before proceeding with prefixing and adjustment.
+     *
+     * @param targetPath Target ZIP file. Must be a writeable ZIP format file, in a writeable directory with enough space to hold a temporary copy.
+     * @param prefixes   Binary prefixes that will be sequentially written before the original ZIP file's contents.
+     * @return Total number of bytes written as prefixes.
+     * @throws IOException on errors related to I/O and ZIP integrity
+     */
+    public static long applyPrefixesToZip(Path targetPath, byte[]... prefixes) throws IOException {
+        validateZipOffsets(isUsableFile(targetPath));
+        return applyPrefixesAndWork(targetPath, new ByteArraysWriter(prefixes), true);
+    }
+
+    /**
+     * Prepend prefix(es) to an existing ZIP format file, adjusting internal offsets as needed. This method tries to be
+     * as cautious as possible by verifying the original ZIP file before proceeding with prefixing and adjustment.
+     *
+     * @param targetPath  Target ZIP file. Must be a writeable ZIP format file, in a writeable directory with enough space to hold a temporary copy.
+     * @param prefixFiles Prefix files that will be sequentially written before the original file's contents.
+     * @return Total number of bytes written as prefixes.
+     * @throws IOException on errors related to I/O and ZIP integrity
+     */
+    public static long applyPrefixesToZip(Path targetPath, Collection<Path> prefixFiles) throws IOException {
+        validateZipOffsets(isUsableFile(targetPath));
+        return applyPrefixesAndWork(targetPath, new PathsWriter(prefixFiles), true);
+    }
 
     /**
      * Prepend prefix(es) to an existing file. This method does not care about file types or contents, it just
@@ -103,22 +122,7 @@ public final class ZipPrefixer {
      * @throws IOException on I/O related errors
      */
     public static long applyPrefixes(Path targetPath, byte[]... prefixes) throws IOException {
-        if (prefixes.length < 1) {
-            return 0;
-        }
-
-        Path original = targetPath.resolveSibling(targetPath.getFileName() + ".original");
-        Files.move(targetPath, original);
-        long prefixesLength = 0;
-        try (OutputStream out = Files.newOutputStream(targetPath)) {
-            for (byte[] prefix : prefixes) {
-                out.write(prefix);
-                prefixesLength += prefix.length;
-            }
-            Files.copy(original, out);
-        }
-        Files.deleteIfExists(original);
-        return prefixesLength;
+        return applyPrefixesAndWork(targetPath, new ByteArraysWriter(prefixes), false);
     }
 
     /**
@@ -130,30 +134,42 @@ public final class ZipPrefixer {
      * @return Total number of bytes written as prefixes.
      * @throws IOException on I/O related errors
      */
-    public static long applyPrefixes(Path targetPath, List<Path> prefixFiles) throws IOException {
-        if (prefixFiles.isEmpty()) {
-            return 0;
-        }
-
-        Path original = targetPath.resolveSibling(targetPath.getFileName() + ".original");
-        Files.move(targetPath, original);
-        long prefixesLength = 0;
-        try (OutputStream out = Files.newOutputStream(targetPath)) {
-            for (Path prefixFile : prefixFiles) {
-                prefixesLength += Files.copy(prefixFile, out);
-            }
-            Files.copy(original, out);
-        }
-        Files.deleteIfExists(original);
-        return prefixesLength;
+    public static long applyPrefixes(Path targetPath, Collection<Path> prefixFiles) throws IOException {
+        return applyPrefixesAndWork(targetPath, new PathsWriter(prefixFiles), false);
     }
 
+    static long applyPrefixesAndWork(Path targetPath, Writer writer, boolean adjustZip) throws IOException {
+        Path workFile = createWorkfile(targetPath);
+        try {
+            long prefixesLength;
+            try (OutputStream out = Files.newOutputStream(workFile)) {
+                prefixesLength = writer.write(out);
+                Files.copy(targetPath, out);
+            }
+            if (adjustZip) {
+                adjustZipOffsets(workFile, prefixesLength);
+            }
+            Files.move(workFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            return prefixesLength;
+        } finally {
+            Files.deleteIfExists(workFile);
+        }
+    }
+
+    static Path createWorkfile(Path original) throws IOException {
+        Path originalName = original.getFileName();
+        Path originalParent = original.getParent();
+        if (originalName == null || originalParent == null) {
+            throw new IOException("invalid path " + original);
+        }
+        return Files.createTempFile(originalParent, originalName.toString(), "temp");
+    }
 
     /**
      * Validate current offsets in ZIP file.
      *
      * @param targetPath ZIP file to process.
-     * @throws IOException On I/O errors.
+     * @throws IOException  On I/O errors.
      * @throws ZipException On errors in the ZIP's integrity.
      */
     public static void validateZipOffsets(Path targetPath) throws IOException {
@@ -165,7 +181,7 @@ public final class ZipPrefixer {
      *
      * @param targetPath ZIP file to process.
      * @param adjustment Offset to add to the current offsets.
-     * @throws IOException On I/O errors.
+     * @throws IOException  On I/O errors.
      * @throws ZipException On errors in the ZIP's integrity.
      */
     public static void adjustZipOffsets(Path targetPath, long adjustment) throws IOException {
@@ -177,11 +193,11 @@ public final class ZipPrefixer {
            is a linear function of the number of entries (files) in the ZIP.
          */
         final Queue<Write> writeQueue;
-        try (final SeekableByteChannel channel = Files.newByteChannel(targetPath)) {
+        try (SeekableByteChannel channel = Files.newByteChannel(targetPath)) {
             writeQueue = analyseOffsets(mustAdjust, adjustment, channel);
         }
         if (mustAdjust) {
-            try (final SeekableByteChannel channel = Files.newByteChannel(targetPath, StandardOpenOption.WRITE)) {
+            try (SeekableByteChannel channel = Files.newByteChannel(targetPath, StandardOpenOption.WRITE)) {
                 applyWrites(writeQueue, channel);
             }
         }
@@ -344,19 +360,57 @@ public final class ZipPrefixer {
                 .map(Paths::get)
                 .collect(Collectors.toList());
 
-        final long startTime = System.nanoTime();
         long endTime;
+        final long startTime = System.nanoTime();
         if (paths.isEmpty()) {
             validateZipOffsets(zipfile);
             endTime = System.nanoTime();
             System.out.print("validated offsets in " + zipfile);
         } else {
-            final long prefixesLength = applyPrefixes(zipfile, paths);
-            adjustZipOffsets(zipfile, prefixesLength);
+            long prefixesLength = applyPrefixesToZip(zipfile, paths);
             endTime = System.nanoTime();
             System.out.printf("prefixed %d bytes on %s", prefixesLength, zipfile);
         }
         System.out.printf(" in %.1f ms %n", (endTime - startTime) / 1e6);
+    }
+
+    interface Writer {
+        long write(OutputStream destination) throws IOException;
+    }
+
+    private static final class ByteArraysWriter implements Writer {
+        final byte[][] prefixes;
+
+        ByteArraysWriter(byte[]... prefixes) {
+            this.prefixes = prefixes;
+        }
+
+        @Override
+        public long write(OutputStream destination) throws IOException {
+            long prefixesLength = 0;
+            for (byte[] prefix : prefixes) {
+                destination.write(prefix);
+                prefixesLength += prefix.length;
+            }
+            return prefixesLength;
+        }
+    }
+
+    private static final class PathsWriter implements Writer {
+        final Collection<Path> prefixes;
+
+        PathsWriter(Collection<Path> prefixes) {
+            this.prefixes = prefixes;
+        }
+
+        @Override
+        public long write(OutputStream destination) throws IOException {
+            long prefixesLength = 0;
+            for (Path prefixFile : prefixes) {
+                prefixesLength += Files.copy(prefixFile, destination);
+            }
+            return prefixesLength;
+        }
     }
 
 }
