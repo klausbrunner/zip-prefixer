@@ -86,7 +86,7 @@ class ZipPrefixerTest {
 
     @ParameterizedTest
     @Disabled("needs lots of time/disk space")
-    @ValueSource(strings = {"few-huge-files.zip"})
+    @ValueSource(strings = {"few-huge-files.zip", "100k-files.zip"})
     void adjustsZipOffsetsOnHugeFiles(String filename) throws IOException {
         Path f = prepareTestFile(filename);
         ZipPrefixer.validateZipOffsets(f);
