@@ -2,8 +2,7 @@
 
 ![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://search.maven.org/search?q=g:net.e175.klaus%20a:zip-prefixer)
 
-Java library to prefix a ZIP format file with arbitrary data without breaking internal offsets or rebuilding from
-scratch. Runs on Java 8 or newer, zero runtime dependencies.
+Java library to add a prefix (also called preamble) containing arbitrary data to ZIP format files without breaking internal offsets or rebuilding from scratch. Runs on Java 8 or newer, zero runtime dependencies.
 
 ## Why would I need this?
 
@@ -14,7 +13,7 @@ by simply concatenating the additional bytes and the original ZIP file together.
 offsets and while many ZIP readers (including Java's jar command) can cope with this corruption in the case of simple 
 ZIP files, they tend to fail with modern ZIP64s. 
 
-One solution is to rebuild the ZIP file using an archiver library that knows about prefixes (such as Apache commons compress). 
+One solution is to rebuild the ZIP file using an archiver library that knows about preambles (such as Apache commons compress). 
 Another is to simply correct the offsets, which means the original ZIP remains mostly unchanged and the whole process 
 is very fast. This is the goal of this library.
 
