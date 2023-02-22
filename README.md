@@ -18,6 +18,9 @@ Another is to simply correct the offsets, which means the original ZIP remains m
 is very fast. This is the goal of this library.
 
 ## Basic usage
+
+See the [central repository](https://search.maven.org/search?q=a:zip-prefixer) for Maven coordinates and latest version.
+
 ````java
 import net.e175.klaus.zip.ZipPrefixer;
 
@@ -29,12 +32,14 @@ long addedBytes = ZipPrefixer.applyPrefixesToZip(zipFile, "hello, world".getByte
 // optional: check integrity of the resulting ZIP file again
 ZipPrefixer.validateZipOffsets(zipFile);
 ````
+Check the Javadoc for further methods.
+
 ## Implementation approach
 
-- Scan from the end for the End of Central Directory Record ("EndFirst" style as per [this terminology](https://gynvael.coldwind.pl/?id=682)). 
+- Scan from EOF backwards for the End of Central Directory Record ("EndFirst" style as per [this terminology](https://gynvael.coldwind.pl/?id=682)). 
 - Strictly use the Central Directory to find Local File Headers. No scanning around for LFHs. If the LFH isn't exactly where we expect it to be, abort.
 - No validation of LFH vs. CFH entry content (e.g. filename, sizes).
-- Rewrite only offsets, not a single other byte must be written.
+- Rewrite only offsets, not a single other byte must be touched.
 
 ## A note on ZIP64 support
 
