@@ -9,12 +9,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.zip.ZipException;
 
 import static net.e175.klaus.zip.TestUtil.prepareTestFile;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
+import static net.e175.klaus.zip.ZipPrefixer.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ZipPrefixerTest {
 
@@ -22,7 +24,7 @@ class ZipPrefixerTest {
     void appliesPrefixes() throws IOException {
         Path f = prepareTestFile("bla.txt");
 
-        long prefixLength = ZipPrefixer.applyPrefixes(f,
+        long prefixLength = applyPrefixes(f,
                 "Lorem ".getBytes(StandardCharsets.UTF_8),
                 "ipsum ".getBytes(StandardCharsets.UTF_8));
 
@@ -37,7 +39,7 @@ class ZipPrefixerTest {
         Path f = prepareTestFile("bla.txt");
         Path f2 = prepareTestFile("bla.txt");
 
-        long prefixLength = ZipPrefixer.applyPrefixes(f, Collections.singletonList(f2));
+        long prefixLength = applyPrefixes(f, Collections.singletonList(f2));
 
         List<String> strings = Files.readAllLines(f);
         assertEquals("dolor sit.dolor sit.", strings.get(0));
@@ -50,7 +52,7 @@ class ZipPrefixerTest {
         Path f = prepareTestFile("simplest.jar");
 
         TestUtil.looksLikeGoodZip(f);
-        ZipPrefixer.adjustZipOffsets(f, 0);
+        adjustZipOffsets(f, 0);
     }
 
     @Test
@@ -58,12 +60,12 @@ class ZipPrefixerTest {
         Path f = prepareTestFile("simplest-zip64.jar");
 
         TestUtil.looksLikeGoodZip(f);
-        ZipPrefixer.validateZipOffsets(f);
-        ZipPrefixer.applyPrefixes(f, "broken".getBytes(StandardCharsets.UTF_8));
+        validateZipOffsets(f);
+        applyPrefixes(f, "broken".getBytes(StandardCharsets.UTF_8));
         try {
-            ZipPrefixer.validateZipOffsets(f);
+            validateZipOffsets(f);
             fail("should have thrown an exception");
-        } catch(IOException ignored) {
+        } catch (IOException ignored) {
         }
     }
 
@@ -78,9 +80,9 @@ class ZipPrefixerTest {
 
         final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
 
-        ZipPrefixer.applyPrefixesToZip(f, prefix);
+        applyPrefixesToZip(f, prefix);
 
-        ZipPrefixer.validateZipOffsets(f);
+        validateZipOffsets(f);
         TestUtil.looksLikeGoodZip(f);
     }
 
@@ -89,21 +91,34 @@ class ZipPrefixerTest {
     @ValueSource(strings = {"few-huge-files.zip", "100k-files.zip"})
     void adjustsZipOffsetsOnHugeFiles(String filename) throws IOException {
         Path f = prepareTestFile(filename);
-        ZipPrefixer.validateZipOffsets(f);
+        validateZipOffsets(f);
 
         final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
 
-        assertEquals(prefix.length, ZipPrefixer.applyPrefixes(f, prefix));
+        assertEquals(prefix.length, applyPrefixes(f, prefix));
 
         try {
-            ZipPrefixer.validateZipOffsets(f);
+            validateZipOffsets(f);
             fail("should have thrown an exception, but didn't");
         } catch (IOException ignored) {
         }
 
-        ZipPrefixer.adjustZipOffsets(f, prefix.length);
+        adjustZipOffsets(f, prefix.length);
 
-        ZipPrefixer.validateZipOffsets(f);
+        validateZipOffsets(f);
+    }
+
+    @Test
+    @Disabled("needs lots of time/disk space")
+    void bailsOutOn4gBoundaryCrossing() throws IOException {
+        Path filler = prepareTestFile("1g-file.bin");
+        Path zip = prepareTestFile("simplest.jar");
+
+        validateZipOffsets(zip);
+
+        assertThrows(
+                ZipException.class,
+                () -> applyPrefixesToZip(zip, Arrays.asList(filler, filler, filler, filler)));
     }
 
     @Test
@@ -111,7 +126,7 @@ class ZipPrefixerTest {
         Path f = prepareTestFile("simplest-zip64.jar");
 
         TestUtil.looksLikeGoodZip(f);
-        ZipPrefixer.adjustZipOffsets(f, 0);
+        adjustZipOffsets(f, 0);
     }
 
 }

@@ -80,6 +80,7 @@ public final class ZipPrefixer {
     // Zip64 Extended Information Extra Field
     static final FieldSpec ZIP64_EIEF_SIGNATURE = FieldSpec.of(2, "zip64EIEFSignature", new byte[]{0x01, 0x00});
     private static final Logger LOG = Logger.getLogger(ZipPrefixer.class.getName());
+    public static final long UINT_MAX_VALUE = 0xFF_FF_FF_FFL;
 
     private ZipPrefixer() {
     }
@@ -213,10 +214,11 @@ public final class ZipPrefixer {
         boolean requiresZip64 = false;
 
         long cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
-        if (cdOffset != 0xFF_FF_FF_FFL) {
+        if (cdOffset != UINT_MAX_VALUE) {
             if (mustAdjust) {
                 cdOffset += adjustment;
-                writeQueue.add(eocdr.writeInt("offsetOfStartOfCD", (int) cdOffset));
+                writeQueue.add(eocdr.writeInt("offsetOfStartOfCD",
+                        uintBoundsChecked(cdOffset)));
             }
         } else {
             requiresZip64 = true;
@@ -273,10 +275,11 @@ public final class ZipPrefixer {
             // now look at the offset of the local header. in simple cases, this is right inside the CDR,
             // in ZIP64 cases it *could* be in the extended field.
             long lfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
-            if (lfhOffset != 0xFF_FF_FF_FFL) {
+            if (lfhOffset != UINT_MAX_VALUE) {
                 if (mustAdjust) {
                     lfhOffset += adjustment;
-                    writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader", (int) lfhOffset));
+                    writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader",
+                            uintBoundsChecked(lfhOffset)));
                 }
             } else {
                 // ZIP64 offset it is; now we need to determine the expected format of the ZIP64 EIEF,
@@ -284,10 +287,10 @@ public final class ZipPrefixer {
                 List<FieldSpec> requiredFieldsInEIEF = new ArrayList<>(5);
                 requiredFieldsInEIEF.add(ZIP64_EIEF_SIGNATURE);
                 requiredFieldsInEIEF.add(FieldSpec.of(2, "size"));
-                if (cfh.getUnsignedInt("uncompressedSize") == 0xFF_FF_FF_FFL) {
+                if (cfh.getUnsignedInt("uncompressedSize") == UINT_MAX_VALUE) {
                     requiredFieldsInEIEF.add(FieldSpec.of(8, "uncompressedSize"));
                 }
-                if (cfh.getUnsignedInt("compressedSize") == 0xFF_FF_FF_FFL) {
+                if (cfh.getUnsignedInt("compressedSize") == UINT_MAX_VALUE) {
                     requiredFieldsInEIEF.add(FieldSpec.of(8, "compressedSize"));
                 }
                 requiredFieldsInEIEF.add(FieldSpec.of(8, "relativeOffsetOfLocalHeader"));
@@ -324,6 +327,13 @@ public final class ZipPrefixer {
         }
 
         return writeQueue;
+    }
+
+    private static int uintBoundsChecked(long unsignedIntOffset) throws ZipException {
+        if (unsignedIntOffset > UINT_MAX_VALUE) {
+            throw new ZipException("This is a non-ZIP64 archive, but would have to be ZIP64 to accommodate the new offsets.");
+        }
+        return (int) unsignedIntOffset;
     }
 
     /**
