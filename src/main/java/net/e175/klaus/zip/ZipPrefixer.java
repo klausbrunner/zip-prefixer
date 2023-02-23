@@ -92,7 +92,8 @@ public final class ZipPrefixer {
      * @param targetPath Target ZIP file. Must be a writeable ZIP format file, in a writeable directory with enough space to hold a temporary copy.
      * @param prefixes   Binary prefixes that will be sequentially written before the original ZIP file's contents.
      * @return Total number of bytes written as prefixes.
-     * @throws IOException on errors related to I/O and ZIP integrity
+     * @throws IOException          on errors related to I/O and ZIP integrity
+     * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
      */
     public static long applyPrefixesToZip(Path targetPath, byte[]... prefixes) throws IOException {
         validateZipOffsets(isUsableFile(targetPath));
@@ -106,7 +107,8 @@ public final class ZipPrefixer {
      * @param targetPath  Target ZIP file. Must be a writeable ZIP format file, in a writeable directory with enough space to hold a temporary copy.
      * @param prefixFiles Prefix files that will be sequentially written before the original file's contents.
      * @return Total number of bytes written as prefixes.
-     * @throws IOException on errors related to I/O and ZIP integrity
+     * @throws IOException          on errors related to I/O and ZIP integrity
+     * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
      */
     public static long applyPrefixesToZip(Path targetPath, Collection<Path> prefixFiles) throws IOException {
         validateZipOffsets(isUsableFile(targetPath));
@@ -182,8 +184,9 @@ public final class ZipPrefixer {
      *
      * @param targetPath ZIP file to process.
      * @param adjustment Offset to add to the current offsets.
-     * @throws IOException  On I/O errors.
-     * @throws ZipException On errors in the ZIP's integrity.
+     * @throws IOException          On I/O errors.
+     * @throws ZipException         On errors in the ZIP's integrity.
+     * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
      */
     public static void adjustZipOffsets(Path targetPath, long adjustment) throws IOException {
         final boolean mustAdjust = adjustment != 0;
@@ -329,9 +332,9 @@ public final class ZipPrefixer {
         return writeQueue;
     }
 
-    private static int uintBoundsChecked(long unsignedIntOffset) throws ZipException {
+    private static int uintBoundsChecked(long unsignedIntOffset) throws ZipOverflowException {
         if (unsignedIntOffset > UINT_MAX_VALUE) {
-            throw new ZipException("This is a non-ZIP64 archive, but would have to be ZIP64 to accommodate the new offsets.");
+            throw new ZipOverflowException("This is a non-ZIP64 archive, but would have to be ZIP64 to accommodate the new offsets.");
         }
         return (int) unsignedIntOffset;
     }

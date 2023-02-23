@@ -12,7 +12,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.zip.ZipException;
 
 import static net.e175.klaus.zip.TestUtil.prepareTestFile;
 import static net.e175.klaus.zip.ZipPrefixer.*;
@@ -117,7 +116,7 @@ class ZipPrefixerTest {
         validateZipOffsets(zip);
 
         assertThrows(
-                ZipException.class,
+                ZipOverflowException.class,
                 () -> applyPrefixesToZip(zip, Arrays.asList(filler, filler, filler, filler)));
     }
 

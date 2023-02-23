@@ -5,7 +5,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** An instrumented pass-through SeekableByteChannel. */
+/**
+ * An instrumented pass-through SeekableByteChannel.
+ */
 final class CountingSeekableByteChannel implements SeekableByteChannel {
     private final SeekableByteChannel basedOn;
 
