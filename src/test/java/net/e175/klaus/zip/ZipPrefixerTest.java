@@ -71,7 +71,7 @@ class ZipPrefixerTest {
     @ParameterizedTest
     @ValueSource(strings = {"simplest.jar", "simplest-zip64.jar", "single-1g-file.zip", "single-10g-file.zip",
             "2k-tiny-files.zip", "20k-tiny-files.zip", "small-forced-zip64.zip", "small-forced-zip64-python.zip",
-            "zip64-golang.zip"})
+            "zip64-golang.zip", "winzip-normal.zip", "winzip-zipx.zip"})
     void adjustsZipOffsets(String filename) throws IOException {
         Path f = prepareTestFile(filename);
 
