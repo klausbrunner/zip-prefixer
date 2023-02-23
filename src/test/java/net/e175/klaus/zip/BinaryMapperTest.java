@@ -26,6 +26,18 @@ class BinaryMapperTest {
             FieldSpec.of(1, "byte1")
     );
 
+    public static final PatternSpec TEST_SPEC_UNSIGNED_LE = new PatternSpec(
+            ByteOrder.LITTLE_ENDIAN,
+            FieldSpec.of(4, "unsignedInt1"),
+            FieldSpec.of(2, "unsignedShort1")
+    );
+
+    public static final PatternSpec TEST_SPEC_UNSIGNED_BE = new PatternSpec(
+            ByteOrder.BIG_ENDIAN,
+            FieldSpec.of(4, "unsignedInt1"),
+            FieldSpec.of(2, "unsignedShort1")
+    );
+
     @Test
     void testBasics() throws IOException {
         Path f = prepareTestFile("test-1.bin");
@@ -141,5 +153,66 @@ class BinaryMapperTest {
             assertEquals(32, pi.getByte("byte1"));
         }
     }
+
+    @Test
+    void testUnsignedBEread() throws IOException {
+        Path f = prepareTestFile("test-unsigned-be.bin");
+        try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ)) {
+            PatternInstance pi = BinaryMapper.read(TEST_SPEC_UNSIGNED_BE, channel, 0).orElseThrow(RuntimeException::new);
+            assertEquals(3_333_333_333L, pi.getUnsignedInt("unsignedInt1"));
+            assertEquals(55_555, pi.getUnsignedShort("unsignedShort1"));
+        }
+    }
+
+    @Test
+    void testUnsignedLEread() throws IOException {
+        Path f = prepareTestFile("test-unsigned-le.bin");
+        try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ)) {
+            PatternInstance pi = BinaryMapper.read(TEST_SPEC_UNSIGNED_LE, channel, 0).orElseThrow(RuntimeException::new);
+            assertEquals(3_333_333_333L, pi.getUnsignedInt("unsignedInt1"));
+            assertEquals(55_555, pi.getUnsignedShort("unsignedShort1"));
+        }
+    }
+
+    @Test
+    void testUnsignedBEwrite() throws IOException {
+        Path f = prepareTestFile("test-unsigned-be.bin");
+
+        try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            PatternInstance pi = BinaryMapper.read(TEST_SPEC_UNSIGNED_BE, channel, 0).orElseThrow(RuntimeException::new);
+            assertEquals(3_333_333_333L, pi.getUnsignedInt("unsignedInt1"));
+            assertEquals(55_555, pi.getUnsignedShort("unsignedShort1"));
+
+            Queue<Write> writeQueue = createWriteQueue();
+            writeQueue.add(pi.writeInt("unsignedInt1", (int) 3_333_333_334L));
+            writeQueue.add(pi.writeShort("unsignedShort1", (short) 55_556));
+            applyWrites(writeQueue, channel);
+
+            PatternInstance pi2 = BinaryMapper.read(TEST_SPEC_UNSIGNED_BE, channel, 0).orElseThrow(RuntimeException::new);
+            assertEquals(3_333_333_334L, pi2.getUnsignedInt("unsignedInt1"));
+            assertEquals(55_556, pi2.getUnsignedShort("unsignedShort1"));
+        }
+    }
+
+    @Test
+    void testUnsignedLEwrite() throws IOException {
+        Path f = prepareTestFile("test-unsigned-le.bin");
+
+        try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            PatternInstance pi = BinaryMapper.read(TEST_SPEC_UNSIGNED_LE, channel, 0).orElseThrow(RuntimeException::new);
+            assertEquals(3_333_333_333L, pi.getUnsignedInt("unsignedInt1"));
+            assertEquals(55_555, pi.getUnsignedShort("unsignedShort1"));
+
+            Queue<Write> writeQueue = createWriteQueue();
+            writeQueue.add(pi.writeInt("unsignedInt1", (int) 3_333_333_334L));
+            writeQueue.add(pi.writeShort("unsignedShort1", (short) 55_556));
+            applyWrites(writeQueue, channel);
+
+            PatternInstance pi2 = BinaryMapper.read(TEST_SPEC_UNSIGNED_LE, channel, 0).orElseThrow(RuntimeException::new);
+            assertEquals(3_333_333_334L, pi2.getUnsignedInt("unsignedInt1"));
+            assertEquals(55_556, pi2.getUnsignedShort("unsignedShort1"));
+        }
+    }
+
 
 }
