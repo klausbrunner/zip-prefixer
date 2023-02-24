@@ -41,3 +41,9 @@ Check the Javadoc for further methods.
 - No validation of LFH vs. CFH entry content (e.g. filename, sizes).
 - Rewrite only offsets, not a single other byte must be touched.
 - If the new offset would cross the threshold from 4-byte to 8-byte values (i.e. the ZIP's getting larger than about 4GBs and isn't already using ZIP64 offsets), bail out. This would require a more substantial rewrite of the ZIP, which is currently out of the library's scope.
+
+## Limitations
+
+- No support for multidisk/split archives (although it might even work in simple cases)
+- No support for archives with advanced encryption (specifically, encrypted directories)
+- No automatic conversion to ZIP64 (see above)
