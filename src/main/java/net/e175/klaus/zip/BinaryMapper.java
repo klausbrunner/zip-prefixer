@@ -5,6 +5,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -267,11 +269,32 @@ final class BinaryMapper {
      * until found or limits reached.
      */
     static Optional<PatternInstance> seek(PatternSpec spec, SeekableByteChannel inChannel, long startPosition, boolean forward) throws IOException {
+        return seek(spec, inChannel, startPosition, -1, forward);
+    }
+
+    /**
+     * Seek for a pattern in the given channel, starting from a given position. If the PatternSpec has any magic defined,
+     * this is used to test if the pattern has been found. If not, move forward or backward one position and try again
+     * until found or either limits or given maxDistance of steps reached.
+     */
+    static Optional<PatternInstance> seek(PatternSpec spec, SeekableByteChannel inChannel, long startPosition, long maxDistance, boolean forward) throws IOException {
         final long maxPosition = inChannel.size() - spec.size;
+
+        final BooleanSupplier mayProceed;
+        final AtomicLong stepCounter;
+        if (maxDistance > 0) {
+            stepCounter = new AtomicLong();
+            mayProceed = () -> stepCounter.incrementAndGet() <= maxDistance;
+        } else {
+            mayProceed = () -> true;
+        }
+
+        final long step = forward ? 1L : -1L;
+
         return seek(spec,
                 inChannel,
                 forward ? Math.max(0, startPosition) : Math.min(maxPosition, startPosition),
-                pi -> forward ? 1L : -1L,
+                pi -> mayProceed.getAsBoolean() ? step : 0,
                 0,
                 maxPosition);
     }
@@ -288,7 +311,6 @@ final class BinaryMapper {
                                           long maxPosition) throws IOException {
         long stepSupplied;
         final ByteBuffer buf = spec.bufferFor();
-        PatternInstance readInstance;
 
         final long realMaxPosition = Math.min(maxPosition, inChannel.size() - spec.size);
         final long realMinPosition = Math.max(0, minPosition);
@@ -297,7 +319,7 @@ final class BinaryMapper {
              i <= realMaxPosition && i >= realMinPosition;
              i += stepSupplied) {
 
-            readInstance = readUnvalidated(spec, inChannel, i, buf);
+            PatternInstance readInstance = readUnvalidated(spec, inChannel, i, buf);
 
             if (readInstance.validateMagic()) {
                 return Optional.of(readInstance);

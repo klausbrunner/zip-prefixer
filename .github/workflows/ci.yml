@@ -19,7 +19,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Build with Maven
-        run: mvn -ntp -B install
+        run: mvn -ntp -B '-Dgroups=!HeavyTest' install
       - name: Run our test suite
         run: |
           sudo apt-get -y install p7zip

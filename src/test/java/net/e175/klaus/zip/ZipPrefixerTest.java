@@ -1,6 +1,6 @@
 package net.e175.klaus.zip;
 
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.zip.ZipException;
 
 import static net.e175.klaus.zip.TestUtil.prepareTestFile;
 import static net.e175.klaus.zip.ZipPrefixer.*;
@@ -86,7 +87,7 @@ class ZipPrefixerTest {
     }
 
     @ParameterizedTest
-    @Disabled("needs lots of time/disk space")
+    @Tag("HeavyTest")
     @ValueSource(strings = {"few-huge-files.zip", "100k-files.zip"})
     void adjustsZipOffsetsOnHugeFiles(String filename) throws IOException {
         Path f = prepareTestFile(filename);
@@ -108,7 +109,7 @@ class ZipPrefixerTest {
     }
 
     @Test
-    @Disabled("needs lots of time/disk space")
+    @Tag("HeavyTest")
     void bailsOutOn4gBoundaryCrossing() throws IOException {
         Path filler = prepareTestFile("1g-file.bin");
         Path zip = prepareTestFile("simplest.jar");
@@ -126,6 +127,18 @@ class ZipPrefixerTest {
 
         TestUtil.looksLikeGoodZip(f);
         adjustZipOffsets(f, 0);
+    }
+
+    @Test
+    void detectsNonZips() throws IOException {
+        Path f = prepareTestFile("simplest-zip64.jar");
+
+        ZipPrefixer.looksLikeZip(f);
+
+        Path f2 = prepareTestFile("bla.txt");
+        assertThrows(
+                ZipException.class,
+                () -> ZipPrefixer.looksLikeZip(f2));
     }
 
 }

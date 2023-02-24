@@ -114,6 +114,19 @@ class BinaryMapperTest {
     }
 
     @Test
+    void testSeekWithMaxDistance() throws IOException {
+        Path f = prepareTestFile("test-1.bin");
+
+        try (SeekableByteChannel channel = Files.newByteChannel(f)) {
+            Optional<PatternInstance> result = BinaryMapper.seek(TEST_SPEC_1, channel, 0, 3, true);
+            assertFalse(result.isPresent());
+
+            result = BinaryMapper.seek(TEST_SPEC_1, channel, Long.MAX_VALUE, 6, false);
+            assertFalse(result.isPresent());
+        }
+    }
+
+    @Test
     void testBasicWrite() throws IOException {
         Path f = prepareTestFile("test-1.bin");
 

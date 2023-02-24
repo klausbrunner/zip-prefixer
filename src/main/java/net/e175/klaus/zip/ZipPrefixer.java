@@ -211,8 +211,7 @@ public final class ZipPrefixer {
         final Queue<Write> writeQueue = mustAdjust ? createWriteQueue() : null;
 
         // find EOCDR first; assuming it's at the very end of file or close to it
-        PatternInstance eocdr = seek(EOCDR, channel, Long.MAX_VALUE, false)
-                .orElseThrow(() -> new ZipException("Unable to locate EOCDR. Probably not a ZIP file."));
+        PatternInstance eocdr = findEocdr(channel);
         LOG.fine(() -> String.format("EOCDR found at offset: \"0x%08X\"", eocdr.position));
         boolean requiresZip64 = false;
 
@@ -344,10 +343,14 @@ public final class ZipPrefixer {
      */
     static Path looksLikeZip(Path f) throws IOException {
         try (SeekableByteChannel channel = Files.newByteChannel(f)) {
-            seek(EOCDR, channel, Long.MAX_VALUE, false)
-                    .orElseThrow(() -> new ZipException("Unable to locate EOCDR. This is probably not a ZIP file, or a broken one."));
+            findEocdr(channel);
         }
         return f;
+    }
+
+    private static PatternInstance findEocdr(SeekableByteChannel channel) throws IOException {
+        return seek(EOCDR, channel, Long.MAX_VALUE, 512 * 1024L, false)
+                .orElseThrow(() -> new ZipException("Unable to locate EOCDR. This is probably not a ZIP file, or a broken one."));
     }
 
     static Path isUsableFile(Path f) throws IOException {
