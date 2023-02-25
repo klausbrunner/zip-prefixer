@@ -1,6 +1,6 @@
 # zip-prefixer
 
-![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://search.maven.org/search?q=g:net.e175.klaus%20a:zip-prefixer)
+![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://central.sonatype.com/search?q=zip-prefixer&namespace=net.e175.klaus)
 
 Java library to add a prefix (also called preamble) containing arbitrary data to ZIP format files without breaking internal offsets or rebuilding from scratch. Runs on Java 8 or newer, zero runtime dependencies.
 
@@ -19,7 +19,7 @@ is very fast. This is the goal of this library.
 
 ## Basic usage
 
-See the [central repository](https://search.maven.org/search?q=a:zip-prefixer) for Maven coordinates and latest version.
+See the [central repository](https://central.sonatype.com/search?q=zip-prefixer&namespace=net.e175.klaus) for Maven coordinates and latest version.
 
 ````java
 import net.e175.klaus.zip.ZipPrefixer;
