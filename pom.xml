@@ -60,6 +60,9 @@
                         <manifest>
                             <mainClass>net.e175.klaus.zip.ZipPrefixer</mainClass>
                         </manifest>
+                        <manifestEntries>
+                            <Automatic-Module-Name>net.e175.klaus.zip</Automatic-Module-Name>
+                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>
