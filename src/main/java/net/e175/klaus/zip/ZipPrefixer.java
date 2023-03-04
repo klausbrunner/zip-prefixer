@@ -1,5 +1,7 @@
 package net.e175.klaus.zip;
 
+import static net.e175.klaus.zip.BinaryMapper.*;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -10,8 +12,6 @@ import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipException;
-
-import static net.e175.klaus.zip.BinaryMapper.*;
 
 public final class ZipPrefixer {
 
