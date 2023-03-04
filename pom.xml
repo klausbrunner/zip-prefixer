@@ -26,7 +26,7 @@
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>
 
         <scmCommentPrefix>build: [maven-release-plugin] [skip ci]</scmCommentPrefix>
-        <tagNameFormat>v@{project.version}</tagNameFormat>
+        <basepom.release.tag-name-format>v@{project.version}</basepom.release.tag-name-format>
     </properties>
 
     <licenses>

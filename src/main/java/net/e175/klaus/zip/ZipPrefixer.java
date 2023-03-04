@@ -1,7 +1,5 @@
 package net.e175.klaus.zip;
 
-import static net.e175.klaus.zip.BinaryMapper.*;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -12,6 +10,8 @@ import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipException;
+
+import static net.e175.klaus.zip.BinaryMapper.*;
 
 public final class ZipPrefixer {
 
@@ -126,7 +126,7 @@ public final class ZipPrefixer {
    * @throws IOException on errors related to I/O and ZIP integrity
    * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
    */
-  public static long applyPrefixesToZip(Path targetPath, Collection<Path> prefixFiles)
+  public static long applyPrefixesToZip(Path targetPath, Iterable<Path> prefixFiles)
       throws IOException {
     validateZipOffsets(isUsableFile(targetPath));
     return applyPrefixesAndWork(targetPath, new PathsWriter(prefixFiles), true);
@@ -158,8 +158,7 @@ public final class ZipPrefixer {
    * @return Total number of bytes written as prefixes.
    * @throws IOException on I/O related errors
    */
-  public static long applyPrefixes(Path targetPath, Collection<Path> prefixFiles)
-      throws IOException {
+  public static long applyPrefixes(Path targetPath, Iterable<Path> prefixFiles) throws IOException {
     return applyPrefixesAndWork(targetPath, new PathsWriter(prefixFiles), false);
   }
 
@@ -450,9 +449,9 @@ public final class ZipPrefixer {
   }
 
   private static final class PathsWriter implements Writer {
-    final Collection<Path> prefixes;
+    final Iterable<Path> prefixes;
 
-    PathsWriter(Collection<Path> prefixes) {
+    PathsWriter(Iterable<Path> prefixes) {
       this.prefixes = prefixes;
     }
 
