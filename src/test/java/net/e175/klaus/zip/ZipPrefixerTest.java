@@ -24,10 +24,11 @@ class ZipPrefixerTest {
     Path f = prepareTestFile("bla.txt");
 
     long prefixLength =
-        applyPrefixes(
+        applyPrefixBytes(
             f,
-            "Lorem ".getBytes(StandardCharsets.UTF_8),
-            "ipsum ".getBytes(StandardCharsets.UTF_8));
+            Arrays.asList(
+                "Lorem ".getBytes(StandardCharsets.UTF_8),
+                "ipsum ".getBytes(StandardCharsets.UTF_8)));
 
     List<String> strings = Files.readAllLines(f);
     assertEquals("Lorem ipsum dolor sit.", strings.get(0));
@@ -40,7 +41,7 @@ class ZipPrefixerTest {
     Path f = prepareTestFile("bla.txt");
     Path f2 = prepareTestFile("bla.txt");
 
-    long prefixLength = applyPrefixes(f, Collections.singletonList(f2));
+    long prefixLength = applyPrefixFiles(f, Collections.singletonList(f2));
 
     List<String> strings = Files.readAllLines(f);
     assertEquals("dolor sit.dolor sit.", strings.get(0));
@@ -62,7 +63,7 @@ class ZipPrefixerTest {
 
     TestUtil.looksLikeGoodZip(f);
     validateZipOffsets(f);
-    applyPrefixes(f, "broken".getBytes(StandardCharsets.UTF_8));
+    applyPrefixBytes(f, Collections.singletonList("broken".getBytes(StandardCharsets.UTF_8)));
     try {
       validateZipOffsets(f);
       fail("should have thrown an exception");
@@ -92,7 +93,7 @@ class ZipPrefixerTest {
 
     final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
 
-    applyPrefixesToZip(f, prefix);
+    applyPrefixBytesToZip(f, prefix);
 
     validateZipOffsets(f);
     TestUtil.looksLikeGoodZip(f);
@@ -107,7 +108,7 @@ class ZipPrefixerTest {
 
     final byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
 
-    assertEquals(prefix.length, applyPrefixes(f, prefix));
+    assertEquals(prefix.length, applyPrefixBytes(f, Collections.singletonList(prefix)));
 
     try {
       validateZipOffsets(f);
@@ -130,7 +131,7 @@ class ZipPrefixerTest {
 
     assertThrows(
         ZipOverflowException.class,
-        () -> applyPrefixesToZip(zip, Arrays.asList(filler, filler, filler, filler)));
+        () -> applyPrefixFilesToZip(zip, Arrays.asList(filler, filler, filler, filler)));
   }
 
   @Test

@@ -96,7 +96,7 @@ public final class ZipPrefixer {
   private ZipPrefixer() {}
 
   /**
-   * Prepend prefix(es) to an existing ZIP format file, adjusting internal offsets as needed. This
+   * Prepend prefixes to an existing ZIP format file, adjusting internal offsets as needed. This
    * method tries to be as cautious as possible by verifying the original ZIP file before proceeding
    * with prefixing and adjustment.
    *
@@ -108,13 +108,30 @@ public final class ZipPrefixer {
    * @throws IOException on errors related to I/O and ZIP integrity
    * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
    */
-  public static long applyPrefixesToZip(Path targetPath, byte[]... prefixes) throws IOException {
+  public static long applyPrefixBytesToZip(Path targetPath, Iterable<byte[]> prefixes)
+      throws IOException {
     validateZipOffsets(isUsableFile(targetPath));
     return applyPrefixesAndWork(targetPath, new ByteArraysWriter(prefixes), true);
   }
 
   /**
-   * Prepend prefix(es) to an existing ZIP format file, adjusting internal offsets as needed. This
+   * Prepend prefix to an existing ZIP format file, adjusting internal offsets as needed. This
+   * method tries to be as cautious as possible by verifying the original ZIP file before proceeding
+   * with prefixing and adjustment.
+   *
+   * @param targetPath Target ZIP file. Must be a writeable ZIP format file, in a writeable
+   *     directory with enough space to hold a temporary copy.
+   * @param prefix Binary prefix that will be written before the original ZIP file's contents.
+   * @return Total number of bytes written as prefixes.
+   * @throws IOException on errors related to I/O and ZIP integrity
+   * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
+   */
+  public static long applyPrefixBytesToZip(Path targetPath, byte[] prefix) throws IOException {
+    return applyPrefixBytesToZip(targetPath, Collections.singletonList(prefix));
+  }
+
+  /**
+   * Prepend prefixes to an existing ZIP format file, adjusting internal offsets as needed. This
    * method tries to be as cautious as possible by verifying the original ZIP file before proceeding
    * with prefixing and adjustment.
    *
@@ -126,10 +143,26 @@ public final class ZipPrefixer {
    * @throws IOException on errors related to I/O and ZIP integrity
    * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
    */
-  public static long applyPrefixesToZip(Path targetPath, Iterable<Path> prefixFiles)
+  public static long applyPrefixFilesToZip(Path targetPath, Iterable<Path> prefixFiles)
       throws IOException {
     validateZipOffsets(isUsableFile(targetPath));
     return applyPrefixesAndWork(targetPath, new PathsWriter(prefixFiles), true);
+  }
+
+  /**
+   * Prepend prefix file to an existing ZIP format file, adjusting internal offsets as needed. This
+   * method tries to be as cautious as possible by verifying the original ZIP file before proceeding
+   * with prefixing and adjustment.
+   *
+   * @param targetPath Target ZIP file. Must be a writeable ZIP format file, in a writeable
+   *     directory with enough space to hold a temporary copy.
+   * @param prefixFile Prefix file that will be written before the original file's contents.
+   * @return Total number of bytes written as prefixes.
+   * @throws IOException on errors related to I/O and ZIP integrity
+   * @throws ZipOverflowException If the current ZIP format cannot accommodate the new offsets.
+   */
+  public static long applyPrefixFileToZip(Path targetPath, Path prefixFile) throws IOException {
+    return applyPrefixFilesToZip(targetPath, Collections.singletonList(prefixFile));
   }
 
   /**
@@ -143,7 +176,8 @@ public final class ZipPrefixer {
    * @return Total number of bytes written as prefixes.
    * @throws IOException on I/O related errors
    */
-  public static long applyPrefixes(Path targetPath, byte[]... prefixes) throws IOException {
+  public static long applyPrefixBytes(Path targetPath, Iterable<byte[]> prefixes)
+      throws IOException {
     return applyPrefixesAndWork(targetPath, new ByteArraysWriter(prefixes), false);
   }
 
@@ -158,7 +192,8 @@ public final class ZipPrefixer {
    * @return Total number of bytes written as prefixes.
    * @throws IOException on I/O related errors
    */
-  public static long applyPrefixes(Path targetPath, Iterable<Path> prefixFiles) throws IOException {
+  public static long applyPrefixFiles(Path targetPath, Iterable<Path> prefixFiles)
+      throws IOException {
     return applyPrefixesAndWork(targetPath, new PathsWriter(prefixFiles), false);
   }
 
@@ -419,7 +454,7 @@ public final class ZipPrefixer {
       endTime = System.nanoTime();
       System.out.print("validated offsets in " + zipfile);
     } else {
-      long prefixesLength = applyPrefixesToZip(zipfile, paths);
+      long prefixesLength = applyPrefixFilesToZip(zipfile, paths);
       endTime = System.nanoTime();
       System.out.printf("prefixed %d bytes on %s", prefixesLength, zipfile);
     }
@@ -431,9 +466,9 @@ public final class ZipPrefixer {
   }
 
   private static final class ByteArraysWriter implements Writer {
-    final byte[][] prefixes;
+    final Iterable<byte[]> prefixes;
 
-    ByteArraysWriter(byte[]... prefixes) {
+    ByteArraysWriter(Iterable<byte[]> prefixes) {
       this.prefixes = prefixes;
     }
 

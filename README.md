@@ -27,7 +27,7 @@ import net.e175.klaus.zip.ZipPrefixer;
 Path zipFile = Paths.get("test.zip");
 
 // add a prefix to the file (can be one or more byte arrays or files)
-long addedBytes = ZipPrefixer.applyPrefixesToZip(zipFile, "hello, world".getBytes(StandardCharsets.UTF_8));
+long addedBytes = ZipPrefixer.applyPrefixBytesToZip(zipFile, "hello, world".getBytes(StandardCharsets.UTF_8));
 
 // optional: check integrity of the resulting ZIP file again
 ZipPrefixer.validateZipOffsets(zipFile);
