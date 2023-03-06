@@ -4,7 +4,7 @@
 
     <groupId>net.e175.klaus</groupId>
     <artifactId>zip-prefixer</artifactId>
-    <version>0.2.3-SNAPSHOT</version>
+    <version>0.3.1-SNAPSHOT</version>
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
