@@ -13,6 +13,10 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipException;
 
+/**
+ * Methods to prefix a ZIP (or JAR) file with arbitrary data, without breaking internal offsets or
+ * rebuilding from scratch.
+ */
 public final class ZipPrefixer {
 
   static final PatternSpec EOCDR =
@@ -91,7 +95,7 @@ public final class ZipPrefixer {
   static final FieldSpec ZIP64_EIEF_SIGNATURE =
       FieldSpec.of(2, "zip64EIEFSignature", new byte[] {0x01, 0x00});
   private static final Logger LOG = Logger.getLogger(ZipPrefixer.class.getName());
-  public static final long UINT_MAX_VALUE = 0xFF_FF_FF_FFL;
+  private static final long UINT_MAX_VALUE = 0xFF_FF_FF_FFL;
 
   private ZipPrefixer() {}
 
@@ -435,6 +439,7 @@ public final class ZipPrefixer {
   }
 
   /** Rudimentary CLI intended for testing only. */
+  @Deprecated
   public static void main(String... args) throws IOException {
     if (args.length < 1) {
       System.out.println("usage: zip-prefixer zipfile [prefixfile ...]");
