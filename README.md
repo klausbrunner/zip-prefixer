@@ -1,6 +1,6 @@
 # zip-prefixer
 
-![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://central.sonatype.com/search?q=zip-prefixer&namespace=net.e175.klaus)
+![CI](https://github.com/KlausBrunner/zip-prefixer/workflows/CI/badge.svg) [![Maven](https://img.shields.io/maven-central/v/net.e175.klaus/zip-prefixer?color=dodgerblue)](https://central.sonatype.com/artifact/net.e175.klaus/zip-prefixer/)
 [![javadoc](https://javadoc.io/badge2/net.e175.klaus/zip-prefixer/javadoc.svg)](https://javadoc.io/doc/net.e175.klaus/zip-prefixer)
 
 Java library to add a prefix (also called preamble) containing arbitrary data to ZIP format files without breaking internal offsets or rebuilding from scratch. Runs on Java 8 or newer, zero runtime dependencies.
