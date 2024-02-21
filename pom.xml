@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
-        <version>55</version>
+        <version>59</version>
     </parent>
     <name>zip-prefixer</name>
     <description>Prefixes a ZIP (or JAR) file with arbitrary data without breaking internal offsets or rebuilding from
@@ -20,7 +20,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
 
-        <junit.version>5.10.1</junit.version>
+        <junit.version>5.10.2</junit.version>
         <basepom.check.skip-license>true</basepom.check.skip-license>
         <basepom.check.skip-checkstyle>true</basepom.check.skip-checkstyle>
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>
@@ -102,7 +102,7 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-compress</artifactId>
-            <version>1.25.0</version>
+            <version>1.26.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
