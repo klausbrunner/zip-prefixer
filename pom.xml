@@ -20,7 +20,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
 
-        <junit.version>5.10.2</junit.version>
+        <junit.version>5.11.0</junit.version>
         <basepom.check.skip-license>true</basepom.check.skip-license>
         <basepom.check.skip-checkstyle>true</basepom.check.skip-checkstyle>
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>
