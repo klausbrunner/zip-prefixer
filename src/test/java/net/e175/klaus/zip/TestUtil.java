@@ -29,8 +29,8 @@ final class TestUtil {
   }
 
   /** Test if this looks like a good zip file, with proper offsets and retrievable files. */
-  static Path looksLikeGoodZip(Path f) throws IOException {
-    try (ZipFile archive = new ZipFile(f)) {
+  static void looksLikeGoodZip(Path f) throws IOException {
+    try (ZipFile archive = ZipFile.builder().setPath(f).get()) {
       Enumeration<ZipArchiveEntry> entries = archive.getEntriesInPhysicalOrder();
       while (entries.hasMoreElements()) {
         ZipArchiveEntry entry = entries.nextElement();
@@ -39,6 +39,5 @@ final class TestUtil {
         }
       }
     }
-    return f;
   }
 }
