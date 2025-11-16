@@ -5,7 +5,7 @@
 
 Java library to add a prefix (also called preamble) containing arbitrary data to ZIP format files without breaking internal offsets or rebuilding from scratch. 
 
-Runs on Java 17 or newer, zero runtime dependencies. 
+Runs on Java 17 or newer, zero runtime dependencies. If you're still stuck on Java 8, use latest `0.3.x` version.
 
 ## Why would I need this?
 

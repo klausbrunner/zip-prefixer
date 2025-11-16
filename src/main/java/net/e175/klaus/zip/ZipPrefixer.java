@@ -334,7 +334,7 @@ public final class ZipPrefixer {
     var currentOffset = cdOffset;
     final var cfhBuffer = CFH.bufferFor();
     final var lfhBuffer = LFH.bufferFor();
-    for (var i = 0; i < numberOfCdEntries; i++) {
+    for (long i = 0; i < numberOfCdEntries; i++) {
       currentOffset =
           processEntry(
               currentOffset, cfhBuffer, lfhBuffer, mustAdjust, adjustment, writeQueue, channel);

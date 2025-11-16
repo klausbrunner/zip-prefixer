@@ -1,5 +1,6 @@
 package net.e175.klaus.zip;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -281,7 +282,16 @@ final class BinaryMapper {
     inChannel.position(position);
     buf.clear();
     int bytesRead = inChannel.read(buf);
-    assert bytesRead == spec.size;
+    if (bytesRead != spec.size()) {
+      throw new EOFException(
+          "Unable to read "
+              + spec.size
+              + " bytes starting at position "
+              + position
+              + ". Channel provided "
+              + (bytesRead == -1 ? 0 : bytesRead)
+              + " bytes.");
+    }
     var pi = new PatternInstance(spec, position, buf);
     buf.rewind();
     return pi;
