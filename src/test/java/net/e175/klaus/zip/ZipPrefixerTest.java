@@ -151,4 +151,14 @@ class ZipPrefixerTest {
     Path f2 = prepareTestFile("bla.txt");
     assertThrows(ZipException.class, () -> ZipPrefixer.looksLikeZip(f2));
   }
+
+  @Test
+  void rejectsNonRegularFiles() throws IOException {
+    Path dir = Files.createTempDirectory("zip-prefixer-dir");
+    try {
+      assertThrows(IOException.class, () -> ZipPrefixer.isUsableFile(dir));
+    } finally {
+      Files.deleteIfExists(dir);
+    }
+  }
 }

@@ -334,7 +334,7 @@ public final class ZipPrefixer {
     long sequentialOffset = cdOffset;
     final ByteBuffer cfhBuffer = CFH.bufferFor();
     final ByteBuffer lfhBuffer = LFH.bufferFor();
-    for (int i = 0; i < numberOfCdEntries; i++) {
+    for (long i = 0; i < numberOfCdEntries; i++) {
       PatternInstance cfh =
           read(CFH, channel, sequentialOffset, cfhBuffer)
               .orElseThrow(
@@ -432,7 +432,7 @@ public final class ZipPrefixer {
   }
 
   static Path isUsableFile(Path f) throws IOException {
-    if (!Files.isRegularFile(f) && !Files.isReadable(f)) {
+    if (!Files.isRegularFile(f) || !Files.isReadable(f)) {
       throw new IOException("path " + f + " is not a regular, readable file");
     }
     return f;

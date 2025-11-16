@@ -4,6 +4,7 @@ import static net.e175.klaus.zip.BinaryMapper.*;
 import static net.e175.klaus.zip.TestUtil.prepareTestFile;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -237,6 +238,20 @@ class BinaryMapperTest {
           BinaryMapper.read(TEST_SPEC_UNSIGNED_LE, channel, 0).orElseThrow(RuntimeException::new);
       assertEquals(3_333_333_334L, pi2.getUnsignedInt("unsignedInt1"));
       assertEquals(55_556, pi2.getUnsignedShort("unsignedShort1"));
+    }
+  }
+
+  @Test
+  void readUnvalidatedFailsOnShortRead() throws IOException {
+    Path f = Files.createTempFile("short", ".bin");
+    Files.write(f, new byte[] {0x01, 0x02});
+
+    try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ)) {
+      ByteBuffer buf = TEST_SPEC_1.bufferFor();
+      assertThrows(
+          EOFException.class, () -> BinaryMapper.readUnvalidated(TEST_SPEC_1, channel, 0, buf));
+    } finally {
+      Files.deleteIfExists(f);
     }
   }
 }
