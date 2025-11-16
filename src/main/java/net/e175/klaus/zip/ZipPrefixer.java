@@ -429,15 +429,19 @@ public final class ZipPrefixer {
     var requiredZip64EIEF =
         new PatternSpec(ByteOrder.LITTLE_ENDIAN, requiredFieldsInEIEF.toArray(new FieldSpec[0]));
 
+    var extraFieldStart =
+        currentOffset + cfh.spec().size() + cfh.getUnsignedShort("fileNameLength");
+    var extraFieldEnd = extraFieldStart + extraFieldLength;
+
     var zip64eief =
         seek(
                 requiredZip64EIEF,
                 channel,
-                currentOffset,
+                extraFieldStart,
                 // extra fields are separated by header (2+2) plus size
                 (patternInstance -> (long) patternInstance.getUnsignedShort("size") + 4),
-                currentOffset,
-                currentOffset + extraFieldLength)
+                extraFieldStart,
+                extraFieldEnd)
             .orElseThrow(
                 () ->
                     new ZipException(
