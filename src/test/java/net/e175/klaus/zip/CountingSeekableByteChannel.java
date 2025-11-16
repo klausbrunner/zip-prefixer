@@ -48,7 +48,7 @@ final class CountingSeekableByteChannel implements SeekableByteChannel {
 
   @Override
   public long size() throws IOException {
-    return basedOn.position();
+    return basedOn.size();
   }
 
   @Override

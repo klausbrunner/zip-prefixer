@@ -83,18 +83,18 @@ class BinaryMapperTest {
     try (SeekableByteChannel channel = Files.newByteChannel(f)) {
       Optional<PatternInstance> result = BinaryMapper.seek(TEST_SPEC_1, channel, 0, true);
       assertTrue(result.isPresent());
-      result.ifPresent(pi -> assertEquals(4, pi.position));
+      result.ifPresent(pi -> assertEquals(4, pi.position()));
 
       result = BinaryMapper.seek(TEST_SPEC_1, channel, 5, true);
       assertFalse(result.isPresent());
 
       result = BinaryMapper.seek(TEST_SPEC_1, channel, 5, false);
       assertTrue(result.isPresent());
-      result.ifPresent(pi -> assertEquals(4, pi.position));
+      result.ifPresent(pi -> assertEquals(4, pi.position()));
 
       result = BinaryMapper.seek(TEST_SPEC_1, channel, Long.MAX_VALUE, false);
       assertTrue(result.isPresent());
-      result.ifPresent(pi -> assertEquals(4, pi.position));
+      result.ifPresent(pi -> assertEquals(4, pi.position()));
     }
   }
 
@@ -105,11 +105,11 @@ class BinaryMapperTest {
     try (SeekableByteChannel channel = Files.newByteChannel(f)) {
       Optional<PatternInstance> result = BinaryMapper.seek(TEST_SPEC_1, channel, 0, true);
       assertTrue(result.isPresent());
-      result.ifPresent(pi -> assertEquals(4, pi.position));
+      result.ifPresent(pi -> assertEquals(4, pi.position()));
 
       result = BinaryMapper.seek(TEST_SPEC_1, channel, Long.MAX_VALUE, false);
       assertTrue(result.isPresent());
-      result.ifPresent(pi -> assertEquals(4, pi.position));
+      result.ifPresent(pi -> assertEquals(4, pi.position()));
     }
   }
 
@@ -137,8 +137,8 @@ class BinaryMapperTest {
 
       Write w = pi.writeShort("short1", (short) 4321);
 
-      channel.position(w.position);
-      channel.write(w.data);
+      channel.position(w.position());
+      channel.write(w.data());
     }
 
     try (SeekableByteChannel channel = Files.newByteChannel(f, StandardOpenOption.READ)) {

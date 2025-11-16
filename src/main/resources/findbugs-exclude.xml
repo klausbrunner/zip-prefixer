@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <Match>
+        <BugPattern name="EI_EXPOSE_REP"/>
+        <Class name="net.e175.klaus.zip.BinaryMapper$PatternInstance"/>
+    </Match>
+    <Match>
+        <BugPattern name="EI_EXPOSE_REP"/>
+        <Class name="net.e175.klaus.zip.BinaryMapper$Write"/>
+    </Match>
+</FindBugsFilter> 

@@ -72,6 +72,7 @@ class ZipPrefixerTest {
   }
 
   @ParameterizedTest
+  @Tag("HeavyTest")
   @ValueSource(
       strings = {
         "simplest.jar",

@@ -4,11 +4,11 @@
 
     <groupId>net.e175.klaus</groupId>
     <artifactId>zip-prefixer</artifactId>
-    <version>0.3.3-SNAPSHOT</version>
+    <version>0.4.0-SNAPSHOT</version>
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
-        <version>66</version>
+        <version>64</version>
     </parent>
     <name>zip-prefixer</name>
     <description>Prefixes a ZIP (or JAR) file with arbitrary data without breaking internal offsets or rebuilding from
@@ -17,18 +17,18 @@
     <url>https://github.com/klausbrunner/zip-prefixer</url>
 
     <properties>
-        <project.build.targetJdk>8</project.build.targetJdk>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <project.build.targetJdk>17</project.build.targetJdk>
 
         <junit.version>5.13.4</junit.version>
         <basepom.check.skip-license>true</basepom.check.skip-license>
         <basepom.check.skip-checkstyle>true</basepom.check.skip-checkstyle>
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>
 
-        <basepom.release.profiles>basepom.central-release</basepom.release.profiles>
+        <basepom.release.profiles>basepom.oss-release</basepom.release.profiles>
         <scmCommentPrefix>build: [maven-release-plugin] [skip ci]</scmCommentPrefix>
         <basepom.release.tag-name-format>v@{project.version}</basepom.release.tag-name-format>
+        <basepom.nexus-staging.staging-url>https://oss.sonatype.org/</basepom.nexus-staging.staging-url>
+        <basepom.nexus-staging.release-after-close>true</basepom.nexus-staging.release-after-close>
     </properties>
 
     <licenses>
@@ -57,7 +57,7 @@
             <plugin>
                 <groupId>com.spotify.fmt</groupId>
                 <artifactId>fmt-maven-plugin</artifactId>
-                <version>2.27</version>
+                <version>2.29</version>
                 <executions>
                     <execution>
                         <goals>
@@ -65,6 +65,13 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <configuration>
+                    <excludeFilterFile>${project.basedir}/src/main/resources/findbugs-exclude.xml</excludeFilterFile>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

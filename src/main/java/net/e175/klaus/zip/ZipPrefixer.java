@@ -96,6 +96,7 @@ public final class ZipPrefixer {
       FieldSpec.of(2, "zip64EIEFSignature", new byte[] {0x01, 0x00});
   private static final Logger LOG = Logger.getLogger(ZipPrefixer.class.getName());
   private static final long UINT_MAX_VALUE = 0xFF_FF_FF_FFL;
+  private static final String LOG_FORMAT = "Found %s at offset: \"0x%08X\"";
 
   private ZipPrefixer() {}
 
@@ -275,11 +276,11 @@ public final class ZipPrefixer {
     final Queue<Write> writeQueue = mustAdjust ? createWriteQueue() : null;
 
     // find EOCDR first; assuming it's at the very end of file or close to it
-    PatternInstance eocdr = findEocdr(channel);
-    LOG.fine(() -> String.format("EOCDR found at offset: \"0x%08X\"", eocdr.position));
-    boolean requiresZip64 = false;
+    var eocdr = findEocdr(channel);
+    LOG.fine(() -> String.format(LOG_FORMAT, "EOCDR", eocdr.position()));
+    var requiresZip64 = false;
 
-    long cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
+    var cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
     if (cdOffset != UINT_MAX_VALUE) {
       if (mustAdjust) {
         cdOffset += adjustment;
@@ -296,16 +297,15 @@ public final class ZipPrefixer {
 
     // see if we can find a ZIP64 central directory (regardless of whether it's required or not)
     // first, find the ZIP 64 EOCDL
-    Optional<PatternInstance> zip64eocdlO =
-        read(ZIP64_EOCDL, channel, eocdr.position - ZIP64_EOCDL.size);
-    if (!zip64eocdlO.isPresent() && requiresZip64) {
+    var zip64eocdlO = read(ZIP64_EOCDL, channel, eocdr.position() - ZIP64_EOCDL.size());
+    if (zip64eocdlO.isEmpty() && requiresZip64) {
       throw new ZipException(
-          "This archive lacks a ZIP64 EOCDL, which is required according to its EOCDR.");
+          "This archive requires ZIP64 format (due to size or number of entries) but lacks a ZIP64 EOCDL record.");
     } else if (zip64eocdlO.isPresent()) {
       // from this point on, we should definitely expect a ZIP64 central record
       // now get the ZIP64 EOCDR
-      PatternInstance zip64eocdl = zip64eocdlO.get();
-      LOG.fine(() -> String.format("ZIP64 EOCDL found at offset: \"0x%08X\"", zip64eocdl.position));
+      var zip64eocdl = zip64eocdlO.get();
+      LOG.fine(() -> String.format(LOG_FORMAT, "ZIP64 EOCDL", zip64eocdl.position()));
 
       cdOffset = zip64eocdl.getLong("relativeOffsetOfZip64EOCDR");
       if (mustAdjust) {
@@ -313,13 +313,13 @@ public final class ZipPrefixer {
         writeQueue.add(zip64eocdl.writeLong("relativeOffsetOfZip64EOCDR", cdOffset));
       }
 
-      PatternInstance zip64eocdr =
+      var zip64eocdr =
           read(ZIP64_EOCDR, channel, cdOffset)
               .orElseThrow(
                   () ->
                       new ZipException(
-                          "Unable to find the ZIP64 EOCDR in the location given by ZIP64 EOCDL."));
-      LOG.fine(() -> String.format("ZIP64 EOCDR found at offset: \"0x%08X\"", zip64eocdr.position));
+                          "ZIP64 EOCDR not found at the location specified by ZIP64 EOCDL. The archive may be corrupted."));
+      LOG.fine(() -> String.format(LOG_FORMAT, "ZIP64 EOCDR", zip64eocdr.position()));
 
       cdOffset = zip64eocdr.getLong("offsetOfStartOfCD");
       if (mustAdjust) {
@@ -331,86 +331,137 @@ public final class ZipPrefixer {
     }
 
     // now walk through central directory entries
-    long sequentialOffset = cdOffset;
-    final ByteBuffer cfhBuffer = CFH.bufferFor();
-    final ByteBuffer lfhBuffer = LFH.bufferFor();
-    for (long i = 0; i < numberOfCdEntries; i++) {
-      PatternInstance cfh =
-          read(CFH, channel, sequentialOffset, cfhBuffer)
-              .orElseThrow(
-                  () ->
-                      new ZipException("Central file header for entry is not where it should be"));
-      LOG.fine(() -> String.format("CFH entry found at offset: \"0x%08X\"", cfh.position));
-
-      // skip over filename and position on any extra fields
-      sequentialOffset += cfh.spec.size + cfh.getUnsignedShort("fileNameLength");
-      final int extraFieldLength = cfh.getUnsignedShort("extraFieldLength");
-
-      // now look at the offset of the local header. in simple cases, this is right inside the CDR,
-      // in ZIP64 cases it *could* be in the extended field.
-      long lfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
-      if (lfhOffset != UINT_MAX_VALUE) {
-        if (mustAdjust) {
-          lfhOffset += adjustment;
-          writeQueue.add(cfh.writeInt("relativeOffsetOfLocalHeader", uintBoundsChecked(lfhOffset)));
-        }
-      } else {
-        // ZIP64 offset it is; now we need to determine the expected format of the ZIP64 EIEF,
-        // which depends on the fields set to all-1s.
-        List<FieldSpec> requiredFieldsInEIEF = new ArrayList<>(5);
-        requiredFieldsInEIEF.add(ZIP64_EIEF_SIGNATURE);
-        requiredFieldsInEIEF.add(FieldSpec.of(2, "size"));
-        if (cfh.getUnsignedInt("uncompressedSize") == UINT_MAX_VALUE) {
-          requiredFieldsInEIEF.add(FieldSpec.of(8, "uncompressedSize"));
-        }
-        if (cfh.getUnsignedInt("compressedSize") == UINT_MAX_VALUE) {
-          requiredFieldsInEIEF.add(FieldSpec.of(8, "compressedSize"));
-        }
-        requiredFieldsInEIEF.add(FieldSpec.of(8, "relativeOffsetOfLocalHeader"));
-
-        PatternSpec requiredZip64EIEF =
-            new PatternSpec(
-                ByteOrder.LITTLE_ENDIAN, requiredFieldsInEIEF.toArray(new FieldSpec[0]));
-
-        PatternInstance zip64eief =
-            seek(
-                    requiredZip64EIEF,
-                    channel,
-                    sequentialOffset,
-                    // extra fields are separated by header (2+2) plus size
-                    (patternInstance -> (long) patternInstance.getUnsignedShort("size") + 4),
-                    sequentialOffset,
-                    sequentialOffset + extraFieldLength)
-                .orElseThrow(() -> new ZipException("missing ZIP64 extra fields in CFH"));
-
-        // additional validation of length
-        if (zip64eief.getUnsignedShort("size") < (requiredZip64EIEF.nameToFSI.size() - 2) * 8) {
-          throw new ZipException("ZIP64 extra fields in CFH seem to exist, but are too small.");
-        }
-
-        lfhOffset = zip64eief.getLong("relativeOffsetOfLocalHeader");
-        if (mustAdjust) {
-          lfhOffset += adjustment;
-          writeQueue.add(zip64eief.writeLong("relativeOffsetOfLocalHeader", lfhOffset));
-        }
-      }
-
-      PatternInstance lfh =
-          read(LFH, channel, lfhOffset, lfhBuffer)
-              .orElseThrow(
-                  () -> new ZipException("Local file header for entry is not where it should be"));
-      LOG.fine(() -> String.format("LFH entry found at offset: \"0x%08X\"", lfh.position));
-
-      sequentialOffset += extraFieldLength + cfh.getUnsignedShort("fileCommentLength");
+    var currentOffset = cdOffset;
+    final var cfhBuffer = CFH.bufferFor();
+    final var lfhBuffer = LFH.bufferFor();
+    for (var i = 0; i < numberOfCdEntries; i++) {
+      currentOffset =
+          processEntry(
+              currentOffset, cfhBuffer, lfhBuffer, mustAdjust, adjustment, writeQueue, channel);
     }
 
     return writeQueue;
   }
 
+  private static long processEntry(
+      long currentOffset,
+      ByteBuffer cfhBuffer,
+      ByteBuffer lfhBuffer,
+      boolean mustAdjust,
+      long adjustment,
+      Queue<Write> writeQueue,
+      SeekableByteChannel channel)
+      throws IOException {
+    var cfh =
+        read(CFH, channel, currentOffset, cfhBuffer)
+            .orElseThrow(
+                () ->
+                    new ZipException(
+                        String.format(
+                            "Central file header not found at expected offset 0x%08X. The archive may be corrupted.",
+                            currentOffset)));
+    LOG.fine(() -> String.format(LOG_FORMAT, "CFH entry", cfh.position()));
+
+    // skip over filename and position on any extra fields
+    var nextOffset = currentOffset + cfh.spec().size() + cfh.getUnsignedShort("fileNameLength");
+    final var extraFieldLength = cfh.getUnsignedShort("extraFieldLength");
+
+    // now look at the offset of the local header. in simple cases, this is right inside the CDR,
+    // in ZIP64 cases it *could* be in the extended field.
+    var initialLfhOffset = cfh.getUnsignedInt("relativeOffsetOfLocalHeader");
+    var finalLfhOffset =
+        processLfhOffset(
+            initialLfhOffset,
+            cfh,
+            currentOffset,
+            extraFieldLength,
+            mustAdjust,
+            adjustment,
+            writeQueue,
+            channel);
+
+    var lfh =
+        read(LFH, channel, finalLfhOffset, lfhBuffer)
+            .orElseThrow(
+                () ->
+                    new ZipException(
+                        String.format(
+                            "Local file header not found at expected offset 0x%08X. The archive may be corrupted.",
+                            finalLfhOffset)));
+    LOG.fine(() -> String.format(LOG_FORMAT, "LFH entry", lfh.position()));
+
+    return nextOffset + extraFieldLength + cfh.getUnsignedShort("fileCommentLength");
+  }
+
+  private static long processLfhOffset(
+      long initialLfhOffset,
+      PatternInstance cfh,
+      long currentOffset,
+      int extraFieldLength,
+      boolean mustAdjust,
+      long adjustment,
+      Queue<Write> writeQueue,
+      SeekableByteChannel channel)
+      throws IOException {
+    if (initialLfhOffset != UINT_MAX_VALUE) {
+      if (mustAdjust) {
+        var adjustedLfhOffset = initialLfhOffset + adjustment;
+        writeQueue.add(
+            cfh.writeInt("relativeOffsetOfLocalHeader", uintBoundsChecked(adjustedLfhOffset)));
+        return adjustedLfhOffset;
+      }
+      return initialLfhOffset;
+    }
+
+    // ZIP64 offset it is; now we need to determine the expected format of the ZIP64 EIEF,
+    // which depends on the fields set to all-1s.
+    var requiredFieldsInEIEF = new ArrayList<FieldSpec>(5);
+    requiredFieldsInEIEF.add(ZIP64_EIEF_SIGNATURE);
+    requiredFieldsInEIEF.add(FieldSpec.of(2, "size"));
+    if (cfh.getUnsignedInt("uncompressedSize") == UINT_MAX_VALUE) {
+      requiredFieldsInEIEF.add(FieldSpec.of(8, "uncompressedSize"));
+    }
+    if (cfh.getUnsignedInt("compressedSize") == UINT_MAX_VALUE) {
+      requiredFieldsInEIEF.add(FieldSpec.of(8, "compressedSize"));
+    }
+    requiredFieldsInEIEF.add(FieldSpec.of(8, "relativeOffsetOfLocalHeader"));
+
+    var requiredZip64EIEF =
+        new PatternSpec(ByteOrder.LITTLE_ENDIAN, requiredFieldsInEIEF.toArray(new FieldSpec[0]));
+
+    var zip64eief =
+        seek(
+                requiredZip64EIEF,
+                channel,
+                currentOffset,
+                // extra fields are separated by header (2+2) plus size
+                (patternInstance -> (long) patternInstance.getUnsignedShort("size") + 4),
+                currentOffset,
+                currentOffset + extraFieldLength)
+            .orElseThrow(
+                () ->
+                    new ZipException(
+                        "ZIP64 extended information extra field not found in central file header. The archive may be corrupted."));
+
+    // additional validation of length
+    if (zip64eief.getUnsignedShort("size") < (requiredZip64EIEF.nameToFSI().size() - 2) * 8) {
+      throw new ZipException(
+          "ZIP64 extended information extra field exists but is too small. The archive may be corrupted.");
+    }
+
+    var zip64LfhOffset = zip64eief.getLong("relativeOffsetOfLocalHeader");
+    if (mustAdjust) {
+      var adjustedLfhOffset = zip64LfhOffset + adjustment;
+      writeQueue.add(zip64eief.writeLong("relativeOffsetOfLocalHeader", adjustedLfhOffset));
+      return adjustedLfhOffset;
+    }
+    return zip64LfhOffset;
+  }
+
   private static int uintBoundsChecked(long unsignedIntOffset) throws ZipOverflowException {
     if (unsignedIntOffset > UINT_MAX_VALUE) {
       throw new ZipOverflowException(
-          "This is a non-ZIP64 archive, but would have to be ZIP64 to accommodate the new offsets.");
+          "This archive would exceed the 4GB limit for non-ZIP64 archives. Please use a ZIP64 archive instead.");
     }
     return (int) unsignedIntOffset;
   }
@@ -470,12 +521,7 @@ public final class ZipPrefixer {
     long write(OutputStream destination) throws IOException;
   }
 
-  private static final class ByteArraysWriter implements Writer {
-    final Iterable<byte[]> prefixes;
-
-    ByteArraysWriter(Iterable<byte[]> prefixes) {
-      this.prefixes = prefixes;
-    }
+  private record ByteArraysWriter(Iterable<byte[]> prefixes) implements Writer {
 
     @Override
     public long write(OutputStream destination) throws IOException {
@@ -488,12 +534,7 @@ public final class ZipPrefixer {
     }
   }
 
-  private static final class PathsWriter implements Writer {
-    final Iterable<Path> prefixes;
-
-    PathsWriter(Iterable<Path> prefixes) {
-      this.prefixes = prefixes;
-    }
+  private record PathsWriter(Iterable<Path> prefixes) implements Writer {
 
     @Override
     public long write(OutputStream destination) throws IOException {

@@ -1,6 +1,5 @@
 package net.e175.klaus.zip;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -13,198 +12,138 @@ import java.util.function.Function;
 import java.util.logging.Logger;
 
 /**
- * A small and very limited toolkit to deal with reading/writing binary files based on (fixed-size)
- * frames, particularly ZIPs. The idea is to create "patterns" (like C structs) and read these as
- * needed. Writes are collected first to be executed later as a batch.
- *
- * <p>There isn't a lot of hand-holding; bounds checking is only performed where it's cheap to do
- * and often with asserts only. Most classes here could be replaced nicely by records, cutting the
- * LOC by half or so, but we're staying at Java 8 for now.
+ * A toolkit for reading/writing binary files based on fixed-size frames, particularly ZIPs.
+ * Patterns (like C structs) can be defined and read as needed. Writes are collected for batch
+ * execution.
  */
 final class BinaryMapper {
   private static final Logger LOG = Logger.getLogger(BinaryMapper.class.getName());
 
   private BinaryMapper() {}
 
-  static final class FieldSpec {
-    final int size;
-    final String name;
-    final byte[] magic;
-
-    FieldSpec(int size, String name, byte[] magic) {
-      assert size > 0 && name != null;
-
-      this.size = size;
-      this.name = name;
-      this.magic = magic;
-
-      if (magic != null && magic.length != size) {
-        throw new IllegalArgumentException("magic bytes size mismatch");
+  public record FieldSpec(int size, String name, byte[] magic) {
+    public FieldSpec {
+      Objects.requireNonNull(name);
+      if (size <= 0) throw new IllegalArgumentException("size must be > 0");
+      if (magic != null) {
+        if (magic.length != size) {
+          throw new IllegalArgumentException("magic bytes size mismatch");
+        }
+        magic = magic.clone();
       }
     }
 
-    FieldSpec(int size, String name) {
-      this.size = size;
-      this.name = name;
-      this.magic = null;
+    @Override
+    public byte[] magic() {
+      return magic != null ? magic.clone() : null;
     }
 
-    static FieldSpec of(int size, String name) {
-      return new FieldSpec(size, name);
+    public static FieldSpec of(int size, String name) {
+      return new FieldSpec(size, name, null);
     }
 
-    static FieldSpec of(int size, String name, byte[] magic) {
+    public static FieldSpec of(int size, String name, byte[] magic) {
       return new FieldSpec(size, name, magic);
     }
-
-    @Override
-    public String toString() {
-      return "FieldSpec{"
-          + "size="
-          + size
-          + ", name='"
-          + name
-          + '\''
-          + ", magic="
-          + Arrays.toString(magic)
-          + '}';
-    }
   }
 
-  static final class FieldSpecInstance {
-    final FieldSpec fs;
-    final int position;
+  public record FieldSpecInstance(FieldSpec fs, int position) {}
 
-    FieldSpecInstance(FieldSpec fs, int position) {
-      this.fs = fs;
-      this.position = position;
+  public record PatternSpec(
+      int size, ByteOrder byteOrder, Map<String, FieldSpecInstance> nameToFSI) {
+    public PatternSpec {
+      Objects.requireNonNull(byteOrder);
+      Objects.requireNonNull(nameToFSI);
+      nameToFSI = Collections.unmodifiableMap(new LinkedHashMap<>(nameToFSI));
     }
 
-    @Override
-    public String toString() {
-      return "FieldSpecInstance{" + "fs=" + fs + ", position=" + position + '}';
+    public PatternSpec(ByteOrder byteOrder, FieldSpec... specFields) {
+      this(calculateSize(specFields), byteOrder, createImmutableMap(specFields));
     }
-  }
 
-  static final class PatternSpec {
-    final int size;
-
-    final ByteOrder byteOrder;
-
-    final LinkedHashMap<String, FieldSpecInstance> nameToFSI;
-
-    PatternSpec(ByteOrder byteOrder, FieldSpec... specFields) {
-      this.nameToFSI = new LinkedHashMap<>();
-      int position = 0;
-      for (FieldSpec fs : specFields) {
-        this.nameToFSI.put(fs.name, new FieldSpecInstance(fs, position));
-        position += fs.size;
+    private static Map<String, FieldSpecInstance> createImmutableMap(FieldSpec... specFields) {
+      var map = new LinkedHashMap<String, FieldSpecInstance>();
+      var position = 0;
+      for (var fs : specFields) {
+        map.put(fs.name(), new FieldSpecInstance(fs, position));
+        position += fs.size();
       }
-      this.size = position;
-      this.byteOrder = byteOrder;
+      return Collections.unmodifiableMap(map);
+    }
+
+    private static int calculateSize(FieldSpec... specFields) {
+      return Arrays.stream(specFields).mapToInt(FieldSpec::size).sum();
     }
 
     ByteBuffer bufferFor() {
-      ByteBuffer buf = ByteBuffer.allocate(this.size);
-      buf.order(this.byteOrder);
-      return buf;
-    }
-
-    @Override
-    public String toString() {
-      return "PatternSpec{"
-          + "size="
-          + size
-          + ", byteOrder="
-          + byteOrder
-          + ", nameToFSI="
-          + nameToFSI
-          + '}';
+      return ByteBuffer.allocate(size).order(byteOrder);
     }
   }
 
-  static final class PatternInstance {
-
-    PatternInstance(PatternSpec spec, long position, ByteBuffer buffer) {
-      this.spec = spec;
-      this.position = position;
-      this.buffer = buffer.duplicate();
-      this.buffer.order(spec.byteOrder);
-      this.buffer.rewind();
-      if (this.buffer.remaining() < spec.size) {
+  public record PatternInstance(PatternSpec spec, long position, ByteBuffer buffer) {
+    public PatternInstance {
+      Objects.requireNonNull(spec);
+      Objects.requireNonNull(buffer);
+      buffer = buffer.asReadOnlyBuffer().order(spec.byteOrder()).rewind();
+      if (buffer.remaining() < spec.size()) {
         throw new IllegalArgumentException("buffer isn't large or filled enough to hold spec");
       }
     }
-
-    final PatternSpec spec;
-
-    final long position;
-
-    final ByteBuffer buffer;
 
     private Write prepWrite(
         String name,
         Function<FieldSpecInstance, ByteBuffer> bufferProvider,
         Consumer<ByteBuffer> bufferFiller) {
-      FieldSpecInstance fsi = locateField(name);
-      ByteBuffer buf = bufferProvider.apply(fsi);
-      buf.order(spec.byteOrder);
+      var fsi = locateField(name);
+      var buf = bufferProvider.apply(fsi).order(spec.byteOrder());
       bufferFiller.accept(buf);
       buf.flip();
-      return new Write(this.position + fsi.position, buf);
+      return new Write(position + fsi.position(), buf);
     }
 
     Write writeAsBytes(String name, byte[] data) {
-      return prepWrite(
-          name,
-          fsi -> {
-            assert data.length <= fsi.fs.size;
-            return ByteBuffer.wrap(data);
-          },
-          buf -> {});
-    }
-
-    private Write prepWrite(String name, Consumer<ByteBuffer> bufferFiller) {
-      return prepWrite(name, fsi -> ByteBuffer.allocate(fsi.fs.size), bufferFiller);
+      var fsi = locateField(name);
+      if (data.length > fsi.fs().size()) {
+        throw new IllegalArgumentException("data length exceeds field size");
+      }
+      return prepWrite(name, ignored -> ByteBuffer.wrap(data), buf -> {});
     }
 
     Write writeByte(String name, byte data) {
-      return prepWrite(name, buf -> buf.put(data));
+      return prepWrite(name, ignored -> ByteBuffer.allocate(1), buf -> buf.put(data));
     }
 
     Write writeShort(String name, short data) {
-      return prepWrite(name, buf -> buf.putShort(data));
+      return prepWrite(name, ignored -> ByteBuffer.allocate(2), buf -> buf.putShort(data));
     }
 
     Write writeInt(String name, int data) {
-      return prepWrite(name, buf -> buf.putInt(data));
+      return prepWrite(name, ignored -> ByteBuffer.allocate(4), buf -> buf.putInt(data));
     }
 
     Write writeLong(String name, long data) {
-      return prepWrite(name, buf -> buf.putLong(data));
+      return prepWrite(name, ignored -> ByteBuffer.allocate(8), buf -> buf.putLong(data));
     }
 
     byte getByte(String name) {
-      FieldSpecInstance fsi = locateField(name);
-      return buffer.get(fsi.position);
+      return buffer.get(locateField(name).position());
     }
 
     byte[] getBytes(String name) {
-      FieldSpecInstance fsi = locateField(name);
-      return getBytes(fsi);
+      return getBytes(locateField(name));
     }
 
     byte[] getBytes(FieldSpecInstance fsi) {
-      byte[] result = new byte[fsi.fs.size];
-      buffer.position(fsi.position);
-      buffer.get(result, 0, result.length);
+      var result = new byte[fsi.fs().size()];
+      buffer.position(fsi.position());
+      buffer.get(result);
       return result;
     }
 
     short getShort(String name) {
-      FieldSpecInstance fsi = locateField(name);
-      assert fsi.fs.size >= 2;
-      return buffer.getShort(fsi.position);
+      var fsi = locateField(name);
+      assert fsi.fs().size() >= 2;
+      return buffer.getShort(fsi.position());
     }
 
     int getUnsignedShort(String name) {
@@ -212,9 +151,9 @@ final class BinaryMapper {
     }
 
     int getInt(String name) {
-      FieldSpecInstance fsi = locateField(name);
-      assert fsi.fs.size >= 4;
-      return buffer.getInt(fsi.position);
+      var fsi = locateField(name);
+      assert fsi.fs().size() >= 4;
+      return buffer.getInt(fsi.position());
     }
 
     long getUnsignedInt(String name) {
@@ -222,53 +161,30 @@ final class BinaryMapper {
     }
 
     long getLong(String name) {
-      FieldSpecInstance fsi = locateField(name);
-      assert fsi.fs.size >= 8;
-      return buffer.getLong(fsi.position);
+      var fsi = locateField(name);
+      assert fsi.fs().size() >= 8;
+      return buffer.getLong(fsi.position());
     }
 
     boolean validateMagic() {
-      for (FieldSpecInstance fsi : spec.nameToFSI.values()) {
-        if (fsi.fs.magic != null && !Arrays.equals(fsi.fs.magic, getBytes(fsi))) {
-          return false;
-        }
-      }
-      return true;
+      return spec.nameToFSI().values().stream()
+          .allMatch(
+              fsi -> fsi.fs().magic() == null || Arrays.equals(fsi.fs().magic(), getBytes(fsi)));
     }
 
     private FieldSpecInstance locateField(String name) {
-      FieldSpecInstance fsi = spec.nameToFSI.get(name);
+      var fsi = spec.nameToFSI().get(name);
       if (fsi == null) {
         throw new IllegalArgumentException("no such field in my PatternSpec");
       }
       return fsi;
     }
-
-    @Override
-    public String toString() {
-      return "PatternInstance{"
-          + "spec="
-          + spec
-          + ", position="
-          + position
-          + ", buffer="
-          + buffer
-          + '}';
-    }
   }
 
-  static final class Write {
-    final long position;
-    final ByteBuffer data;
-
-    Write(long position, ByteBuffer data) {
-      this.position = position;
-      this.data = data;
-    }
-
-    @Override
-    public String toString() {
-      return "Write{" + "position=" + position + ", data=" + data + '}';
+  public record Write(long position, ByteBuffer data) {
+    public Write {
+      Objects.requireNonNull(data);
+      data = data.asReadOnlyBuffer();
     }
   }
 
@@ -296,18 +212,11 @@ final class BinaryMapper {
       long maxDistance,
       boolean forward)
       throws IOException {
-    final long maxPosition = inChannel.size() - spec.size;
-
-    final BooleanSupplier mayProceed;
-    final AtomicLong stepCounter;
-    if (maxDistance > 0) {
-      stepCounter = new AtomicLong();
-      mayProceed = () -> stepCounter.incrementAndGet() <= maxDistance;
-    } else {
-      mayProceed = () -> true;
-    }
-
+    final long maxPosition = inChannel.size() - spec.size();
     final long step = forward ? 1L : -1L;
+    final AtomicLong stepCounter = new AtomicLong();
+    final BooleanSupplier mayProceed =
+        maxDistance > 0 ? () -> stepCounter.incrementAndGet() <= maxDistance : () -> true;
 
     return seek(
         spec,
@@ -332,25 +241,21 @@ final class BinaryMapper {
       long minPosition,
       long maxPosition)
       throws IOException {
-    long stepSupplied;
-    final ByteBuffer buf = spec.bufferFor();
-
-    final long realMaxPosition = Math.min(maxPosition, inChannel.size() - spec.size);
+    final var buf = spec.bufferFor();
+    final long realMaxPosition = Math.min(maxPosition, inChannel.size() - spec.size());
     final long realMinPosition = Math.max(0, minPosition);
 
-    for (long i = startPosition; i <= realMaxPosition && i >= realMinPosition; i += stepSupplied) {
-
-      PatternInstance readInstance = readUnvalidated(spec, inChannel, i, buf);
-
+    for (long i = startPosition; i <= realMaxPosition && i >= realMinPosition; ) {
+      var readInstance = readUnvalidated(spec, inChannel, i, buf);
       if (readInstance.validateMagic()) {
         return Optional.of(readInstance);
       }
-
-      stepSupplied = stepSupplier.apply(readInstance);
-
-      if (stepSupplied == 0) {
+      buf.rewind();
+      long step = stepSupplier.apply(readInstance);
+      if (step == 0) {
         break;
       }
+      i += step;
     }
     return Optional.empty();
   }
@@ -362,11 +267,8 @@ final class BinaryMapper {
   static Optional<PatternInstance> read(
       PatternSpec spec, SeekableByteChannel inChannel, long position, ByteBuffer buf)
       throws IOException {
-    PatternInstance pi = readUnvalidated(spec, inChannel, position, buf);
-    if (pi.validateMagic()) {
-      return Optional.of(pi);
-    }
-    return Optional.empty();
+    var pi = readUnvalidated(spec, inChannel, position, buf);
+    return pi.validateMagic() ? Optional.of(pi) : Optional.empty();
   }
 
   /**
@@ -379,17 +281,8 @@ final class BinaryMapper {
     inChannel.position(position);
     buf.clear();
     int bytesRead = inChannel.read(buf);
-    if (bytesRead != spec.size) {
-      throw new EOFException(
-          "Unable to read "
-              + spec.size
-              + " bytes starting at position "
-              + position
-              + ". Channel provided "
-              + (bytesRead == -1 ? 0 : bytesRead)
-              + " bytes.");
-    }
-    PatternInstance pi = new PatternInstance(spec, position, buf);
+    assert bytesRead == spec.size;
+    var pi = new PatternInstance(spec, position, buf);
     buf.rewind();
     return pi;
   }
@@ -400,22 +293,21 @@ final class BinaryMapper {
    */
   static Optional<PatternInstance> read(PatternSpec spec, SeekableByteChannel inChannel, long i)
       throws IOException {
-    ByteBuffer buf = spec.bufferFor();
-    return read(spec, inChannel, i, buf);
+    return read(spec, inChannel, i, spec.bufferFor());
   }
 
   /** Create a new queue for Writes that's ordered by position. */
   static Queue<Write> createWriteQueue() {
-    return new PriorityQueue<>(11, Comparator.comparingLong(w -> w.position));
+    return new PriorityQueue<>(11, Comparator.comparingLong(Write::position));
   }
 
   /** Sequentially perform all the writes in the given queue on the given channel. */
   static void applyWrites(Queue<Write> writes, SeekableByteChannel toChannel) throws IOException {
     LOG.fine(() -> "writing " + writes.size() + " Writes");
     while (!writes.isEmpty()) {
-      Write w = writes.poll();
-      toChannel.position(w.position);
-      toChannel.write(w.data);
+      var w = writes.poll();
+      toChannel.position(w.position());
+      toChannel.write(w.data());
       LOG.fine(() -> "wrote " + w);
     }
   }
