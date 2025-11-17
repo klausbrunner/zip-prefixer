@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.*;
+import java.nio.file.attribute.*;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -204,17 +205,20 @@ public final class ZipPrefixer {
 
   static long applyPrefixesAndWork(Path targetPath, Writer writer, boolean adjustZip)
       throws IOException {
-    Path workFile = createWorkfile(targetPath);
+    Path resolvedTarget = targetPath.toRealPath();
+    var preservedAttributes = captureAttributes(resolvedTarget);
+    Path workFile = createWorkfile(resolvedTarget);
     try {
       long prefixesLength;
       try (OutputStream out = Files.newOutputStream(workFile)) {
         prefixesLength = writer.write(out);
-        Files.copy(targetPath, out);
+        Files.copy(resolvedTarget, out);
       }
       if (adjustZip) {
         adjustZipOffsets(workFile, prefixesLength);
       }
-      Files.move(workFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(workFile, resolvedTarget, StandardCopyOption.REPLACE_EXISTING);
+      restoreAttributes(resolvedTarget, preservedAttributes);
       return prefixesLength;
     } finally {
       Files.deleteIfExists(workFile);
@@ -462,7 +466,11 @@ public final class ZipPrefixer {
     return zip64LfhOffset;
   }
 
-  private static int uintBoundsChecked(long unsignedIntOffset) throws ZipOverflowException {
+  private static int uintBoundsChecked(long unsignedIntOffset) throws ZipException {
+    if (unsignedIntOffset < 0) {
+      throw new ZipException(
+          "This archive would require negative offsets, which indicates corrupt or unsupported input.");
+    }
     if (unsignedIntOffset > UINT_MAX_VALUE) {
       throw new ZipOverflowException(
           "This archive would exceed the 4GB limit for non-ZIP64 archives. Please use a ZIP64 archive instead.");
@@ -491,6 +499,60 @@ public final class ZipPrefixer {
       throw new IOException("path " + f + " is not a regular, readable file");
     }
     return f;
+  }
+
+  private static PreservedAttributes captureAttributes(Path target) throws IOException {
+    FileTime lastModified = null;
+    FileTime lastAccess = null;
+    FileTime creation = null;
+    Set<PosixFilePermission> permissions = null;
+    UserPrincipal owner = null;
+
+    BasicFileAttributeView basicView =
+        Files.getFileAttributeView(target, BasicFileAttributeView.class);
+    if (basicView != null) {
+      var attrs = basicView.readAttributes();
+      lastModified = attrs.lastModifiedTime();
+      lastAccess = attrs.lastAccessTime();
+      creation = attrs.creationTime();
+    }
+
+    var posixView = Files.getFileAttributeView(target, PosixFileAttributeView.class);
+    if (posixView != null) {
+      permissions = posixView.readAttributes().permissions();
+    }
+
+    FileOwnerAttributeView ownerView =
+        Files.getFileAttributeView(target, FileOwnerAttributeView.class);
+    if (ownerView != null) {
+      owner = ownerView.getOwner();
+    }
+
+    return new PreservedAttributes(lastModified, lastAccess, creation, permissions, owner);
+  }
+
+  private static void restoreAttributes(Path target, PreservedAttributes attrs) throws IOException {
+    if (attrs == null) {
+      return;
+    }
+    if (attrs.permissions() != null) {
+      var posixView = Files.getFileAttributeView(target, PosixFileAttributeView.class);
+      if (posixView != null) {
+        posixView.setPermissions(attrs.permissions());
+      }
+    }
+    if (attrs.owner() != null) {
+      FileOwnerAttributeView ownerView =
+          Files.getFileAttributeView(target, FileOwnerAttributeView.class);
+      if (ownerView != null) {
+        ownerView.setOwner(attrs.owner());
+      }
+    }
+    BasicFileAttributeView basicView =
+        Files.getFileAttributeView(target, BasicFileAttributeView.class);
+    if (basicView != null) {
+      basicView.setTimes(attrs.lastModified(), attrs.lastAccess(), attrs.creation());
+    }
   }
 
   /** Rudimentary CLI intended for testing only. */
@@ -549,4 +611,11 @@ public final class ZipPrefixer {
       return prefixesLength;
     }
   }
+
+  private record PreservedAttributes(
+      FileTime lastModified,
+      FileTime lastAccess,
+      FileTime creation,
+      Set<PosixFilePermission> permissions,
+      UserPrincipal owner) {}
 }

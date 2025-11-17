@@ -55,7 +55,7 @@ final class BinaryMapper {
     public PatternSpec {
       Objects.requireNonNull(byteOrder);
       Objects.requireNonNull(nameToFSI);
-      nameToFSI = Collections.unmodifiableMap(new LinkedHashMap<>(nameToFSI));
+      nameToFSI = Collections.unmodifiableMap(nameToFSI);
     }
 
     public PatternSpec(ByteOrder byteOrder, FieldSpec... specFields) {

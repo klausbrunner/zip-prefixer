@@ -10,15 +10,14 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayDeque;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Queue;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.*;
 import java.util.zip.ZipException;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -166,6 +165,82 @@ class ZipPrefixerTest {
     try {
       assertThrows(IOException.class, () -> ZipPrefixer.isUsableFile(dir));
     } finally {
+      Files.deleteIfExists(dir);
+    }
+  }
+
+  @Test
+  void prefixesRelativePaths() throws IOException {
+    Path source = prepareTestFile("simplest.jar");
+    Path relative = Paths.get("relative-" + System.nanoTime() + ".jar");
+    try {
+      Files.copy(source, relative);
+      byte[] prefix = "rel".getBytes(StandardCharsets.UTF_8);
+      applyPrefixBytesToZip(relative, prefix);
+      validateZipOffsets(relative);
+      TestUtil.looksLikeGoodZip(relative);
+    } finally {
+      Files.deleteIfExists(relative);
+    }
+  }
+
+  @Test
+  void preservesPermissionsAndTimestamps() throws IOException {
+    Path target = Files.createTempFile("zip-prefixer-perms", ".bin");
+    try {
+      Files.writeString(target, "data", StandardCharsets.UTF_8);
+      FileTime timestamp = FileTime.fromMillis(123456789_000L);
+      BasicFileAttributeView view =
+          Files.getFileAttributeView(target, BasicFileAttributeView.class);
+      view.setTimes(timestamp, timestamp, timestamp);
+
+      boolean posixSupported =
+          FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+      Set<PosixFilePermission> permissions = null;
+      if (posixSupported) {
+        permissions = PosixFilePermissions.fromString("rwxr-x---");
+        Files.setPosixFilePermissions(target, permissions);
+      }
+
+      applyPrefixBytes(target, Collections.singletonList("abc".getBytes(StandardCharsets.UTF_8)));
+
+      assertEquals(timestamp, Files.getLastModifiedTime(target));
+      if (posixSupported) {
+        assertEquals(permissions, Files.getPosixFilePermissions(target));
+      }
+    } finally {
+      Files.deleteIfExists(target);
+    }
+  }
+
+  @Test
+  void followsSymlinksWhenPrefixing() throws IOException {
+    Path source = prepareTestFile("simplest.jar");
+    Path dir = Files.createTempDirectory("zip-prefixer-symlink");
+    Path real = dir.resolve("real.jar");
+    Files.copy(source, real);
+    Path link = dir.resolve("link.jar");
+    try {
+      Files.createSymbolicLink(link, real.getFileName());
+    } catch (IOException | UnsupportedOperationException e) {
+      Files.deleteIfExists(real);
+      Files.deleteIfExists(dir);
+      Assumptions.assumeTrue(false, "Symlinks unsupported: " + e.getMessage());
+      return;
+    }
+
+    try {
+      byte[] prefix = "0123456789".getBytes(StandardCharsets.UTF_8);
+      long originalSize = Files.size(real);
+      applyPrefixBytesToZip(link, prefix);
+      assertTrue(Files.isSymbolicLink(link));
+      assertEquals(originalSize + prefix.length, Files.size(real));
+      assertEquals(Files.size(real), Files.size(link));
+      validateZipOffsets(real);
+      TestUtil.looksLikeGoodZip(real);
+    } finally {
+      Files.deleteIfExists(link);
+      Files.deleteIfExists(real);
       Files.deleteIfExists(dir);
     }
   }
