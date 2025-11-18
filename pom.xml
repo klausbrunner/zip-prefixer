@@ -4,7 +4,7 @@
 
     <groupId>net.e175.klaus</groupId>
     <artifactId>zip-prefixer</artifactId>
-    <version>0.4.0</version>
+    <version>0.4.1-SNAPSHOT</version>
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
@@ -47,7 +47,7 @@
         <connection>scm:git:git@github.com:klausbrunner/zip-prefixer.git</connection>
         <developerConnection>scm:git:git@github.com:klausbrunner/zip-prefixer.git</developerConnection>
         <url>https://github.com/klausbrunner/zip-prefixer/</url>
-        <tag>v0.4.0</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <build>
