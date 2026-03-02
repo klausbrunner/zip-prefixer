@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
-        <version>66</version>
+        <version>68</version>
     </parent>
     <name>zip-prefixer</name>
     <description>Prefixes a ZIP (or JAR) file with arbitrary data without breaking internal offsets or rebuilding from
@@ -19,7 +19,7 @@
     <properties>
         <project.build.targetJdk>17</project.build.targetJdk>
 
-        <junit.version>6.0.1</junit.version>
+        <junit.version>6.0.3</junit.version>
         <basepom.check.skip-license>true</basepom.check.skip-license>
         <basepom.check.skip-checkstyle>true</basepom.check.skip-checkstyle>
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>
@@ -55,11 +55,11 @@
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>
-                <version>2.43.0</version>
+                <version>3.2.1</version>
                 <configuration>
                     <java>
                         <googleJavaFormat>
-                            <version>1.28.0</version>
+                            <version>1.34.1</version>
                         </googleJavaFormat>
                     </java>
                 </configuration>
@@ -87,9 +87,6 @@
                         <manifest>
                             <mainClass>net.e175.klaus.zip.ZipPrefixer</mainClass>
                         </manifest>
-                        <manifestEntries>
-                            <Automatic-Module-Name>net.e175.klaus.zip</Automatic-Module-Name>
-                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>
