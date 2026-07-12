@@ -16,7 +16,10 @@ import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -157,6 +160,35 @@ class ZipPrefixerTest {
 
     Path f2 = prepareTestFile("bla.txt");
     assertThrows(ZipException.class, () -> ZipPrefixer.looksLikeZip(f2));
+  }
+
+  @Test
+  void ignoresEocdrSignatureInsideZipComment() throws IOException {
+    Path zip = Files.createTempFile("zip-prefixer-eocdr-comment", ".zip");
+    try {
+      try (var out = new ZipOutputStream(Files.newOutputStream(zip))) {
+        out.putNextEntry(new ZipEntry("a.txt"));
+        out.write('x');
+        out.closeEntry();
+
+        byte[] falseEocdr = new byte[EOCDR.size() + 4];
+        falseEocdr[0] = 0x50;
+        falseEocdr[1] = 0x4b;
+        falseEocdr[2] = 0x05;
+        falseEocdr[3] = 0x06;
+        Arrays.fill(falseEocdr, EOCDR.size(), falseEocdr.length, (byte) 'x');
+        out.setComment(new String(falseEocdr, StandardCharsets.ISO_8859_1));
+      }
+
+      byte[] prefix = "prefix".getBytes(StandardCharsets.UTF_8);
+      assertEquals(prefix.length, applyPrefixBytesToZip(zip, prefix));
+      validateZipOffsets(zip);
+      try (var prefixedZip = new ZipFile(zip.toFile())) {
+        assertNotNull(prefixedZip.getEntry("a.txt"));
+      }
+    } finally {
+      Files.deleteIfExists(zip);
+    }
   }
 
   @Test

@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.basepom</groupId>
         <artifactId>basepom-oss</artifactId>
-        <version>68</version>
+        <version>69</version>
     </parent>
     <name>zip-prefixer</name>
     <description>Prefixes a ZIP (or JAR) file with arbitrary data without breaking internal offsets or rebuilding from
@@ -19,7 +19,7 @@
     <properties>
         <project.build.targetJdk>17</project.build.targetJdk>
 
-        <junit.version>6.0.3</junit.version>
+        <junit.version>6.1.1</junit.version>
         <basepom.check.skip-license>true</basepom.check.skip-license>
         <basepom.check.skip-checkstyle>true</basepom.check.skip-checkstyle>
         <basepom.check.skip-dependency>true</basepom.check.skip-dependency>

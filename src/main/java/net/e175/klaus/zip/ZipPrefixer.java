@@ -487,11 +487,30 @@ public final class ZipPrefixer {
   }
 
   private static PatternInstance findEocdr(SeekableByteChannel channel) throws IOException {
-    return seek(EOCDR, channel, Long.MAX_VALUE, 512 * 1024L, false)
-        .orElseThrow(
-            () ->
-                new ZipException(
-                    "Unable to locate EOCDR. This is probably not a ZIP file, or a broken one."));
+    final long minPosition = Math.max(0, channel.size() - 512 * 1024L);
+    long startPosition = channel.size() - EOCDR.size();
+    PatternInstance eocdr = null;
+
+    while (startPosition >= minPosition) {
+      var candidate = seek(EOCDR, channel, startPosition, startPosition - minPosition + 1, false);
+      if (candidate.isEmpty()) {
+        break;
+      }
+
+      var current = candidate.get();
+      long expectedEnd =
+          current.position() + EOCDR.size() + current.getUnsignedShort("commentLength");
+      if (expectedEnd == channel.size()) {
+        eocdr = current;
+      }
+      startPosition = current.position() - 1;
+    }
+
+    if (eocdr != null) {
+      return eocdr;
+    }
+    throw new ZipException(
+        "Unable to locate EOCDR. This is probably not a ZIP file, or a broken one.");
   }
 
   static Path isUsableFile(Path f) throws IOException {
