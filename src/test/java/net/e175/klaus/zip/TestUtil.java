@@ -28,6 +28,16 @@ final class TestUtil {
     }
   }
 
+  static Path prepareRawTestFile(String filename) throws IOException {
+    try (var source = Objects.requireNonNull(cl.getResourceAsStream(filename))) {
+      Path target = Files.createTempFile("test", ".zip");
+      Files.copy(source, target, REPLACE_EXISTING);
+      System.out.printf("%s -> %s%n", filename, target);
+      target.toFile().deleteOnExit();
+      return target;
+    }
+  }
+
   /** Test if this looks like a good zip file, with proper offsets and retrievable files. */
   static void looksLikeGoodZip(Path f) throws IOException {
     try (ZipFile archive = ZipFile.builder().setPath(f).get()) {

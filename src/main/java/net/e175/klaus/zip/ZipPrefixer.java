@@ -280,7 +280,7 @@ public final class ZipPrefixer {
     final Queue<Write> writeQueue = mustAdjust ? createWriteQueue() : null;
 
     // find EOCDR first; assuming it's at the very end of file or close to it
-    var eocdr = findEocdr(channel);
+    var eocdr = findEocdr(channel, adjustment);
     LOG.fine(() -> String.format(LOG_FORMAT, "EOCDR", eocdr.position()));
     var requiresZip64 = false;
 
@@ -301,7 +301,10 @@ public final class ZipPrefixer {
 
     // see if we can find a ZIP64 central directory (regardless of whether it's required or not)
     // first, find the ZIP 64 EOCDL
-    var zip64eocdlO = read(ZIP64_EOCDL, channel, eocdr.position() - ZIP64_EOCDL.size());
+    var zip64eocdlO =
+        eocdr.position() >= ZIP64_EOCDL.size()
+            ? read(ZIP64_EOCDL, channel, eocdr.position() - ZIP64_EOCDL.size())
+            : Optional.<PatternInstance>empty();
     if (zip64eocdlO.isEmpty() && requiresZip64) {
       throw new ZipException(
           "This archive requires ZIP64 format (due to size or number of entries) but lacks a ZIP64 EOCDL record.");
@@ -487,9 +490,13 @@ public final class ZipPrefixer {
   }
 
   private static PatternInstance findEocdr(SeekableByteChannel channel) throws IOException {
+    return findEocdr(channel, 0);
+  }
+
+  private static PatternInstance findEocdr(SeekableByteChannel channel, long adjustment)
+      throws IOException {
     final long minPosition = Math.max(0, channel.size() - 512 * 1024L);
     long startPosition = channel.size() - EOCDR.size();
-    PatternInstance eocdr = null;
 
     while (startPosition >= minPosition) {
       var candidate = seek(EOCDR, channel, startPosition, startPosition - minPosition + 1, false);
@@ -500,17 +507,67 @@ public final class ZipPrefixer {
       var current = candidate.get();
       long expectedEnd =
           current.position() + EOCDR.size() + current.getUnsignedShort("commentLength");
-      if (expectedEnd == channel.size()) {
-        eocdr = current;
+      if (expectedEnd == channel.size()
+          && hasConsistentCentralDirectoryEnd(current, channel, adjustment)) {
+        return current;
       }
       startPosition = current.position() - 1;
     }
 
-    if (eocdr != null) {
-      return eocdr;
-    }
     throw new ZipException(
         "Unable to locate EOCDR. This is probably not a ZIP file, or a broken one.");
+  }
+
+  private static boolean hasConsistentCentralDirectoryEnd(
+      PatternInstance eocdr, SeekableByteChannel channel, long adjustment) throws IOException {
+    long cdOffset = eocdr.getUnsignedInt("offsetOfStartOfCD");
+    long cdSize = eocdr.getUnsignedInt("sizeOfCD");
+    long adjustedCdOffset = addWithoutOverflow(cdOffset, adjustment);
+    if (cdOffset != UINT_MAX_VALUE
+        && cdSize != UINT_MAX_VALUE
+        && adjustedCdOffset >= 0
+        && adjustedCdOffset <= eocdr.position()
+        && cdSize == eocdr.position() - adjustedCdOffset) {
+      return true;
+    }
+
+    if (eocdr.position() < ZIP64_EOCDL.size()) {
+      return false;
+    }
+    var locator = read(ZIP64_EOCDL, channel, eocdr.position() - ZIP64_EOCDL.size()).orElse(null);
+    if (locator == null) {
+      return false;
+    }
+
+    long zip64EocdrOffset =
+        addWithoutOverflow(locator.getLong("relativeOffsetOfZip64EOCDR"), adjustment);
+    if (zip64EocdrOffset < 0 || zip64EocdrOffset > locator.position() - ZIP64_EOCDR.size()) {
+      return false;
+    }
+    var zip64Eocdr = read(ZIP64_EOCDR, channel, zip64EocdrOffset).orElse(null);
+    if (zip64Eocdr == null) {
+      return false;
+    }
+
+    long recordSize = zip64Eocdr.getLong("sizeOfZip64eocdr");
+    if (recordSize < ZIP64_EOCDR.size() - 12
+        || recordSize != locator.position() - zip64EocdrOffset - 12) {
+      return false;
+    }
+
+    long zip64CdOffset = addWithoutOverflow(zip64Eocdr.getLong("offsetOfStartOfCD"), adjustment);
+    long zip64CdSize = zip64Eocdr.getLong("sizeOfCD");
+    return zip64CdOffset >= 0
+        && zip64CdOffset <= zip64EocdrOffset
+        && zip64CdSize == zip64EocdrOffset - zip64CdOffset;
+  }
+
+  private static long addWithoutOverflow(long value, long adjustment) {
+    if ((adjustment > 0 && value > Long.MAX_VALUE - adjustment)
+        || (adjustment < 0 && value < Long.MIN_VALUE - adjustment)) {
+      return -1;
+    }
+    return value + adjustment;
   }
 
   static Path isUsableFile(Path f) throws IOException {

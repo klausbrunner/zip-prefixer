@@ -1,5 +1,6 @@
 package net.e175.klaus.zip;
 
+import static net.e175.klaus.zip.TestUtil.prepareRawTestFile;
 import static net.e175.klaus.zip.TestUtil.prepareTestFile;
 import static net.e175.klaus.zip.ZipPrefixer.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -188,6 +189,42 @@ class ZipPrefixerTest {
       }
     } finally {
       Files.deleteIfExists(zip);
+    }
+  }
+
+  @Test
+  void prefixesEmptyZip() throws IOException {
+    Path zip = prepareRawTestFile("empty.zip");
+
+    try (var originalZip = new ZipFile(zip.toFile())) {
+      assertEquals(0, originalZip.size());
+    }
+
+    byte[] prefix = "prefix".getBytes(StandardCharsets.UTF_8);
+    assertEquals(prefix.length, applyPrefixBytesToZip(zip, prefix));
+    validateZipOffsets(zip);
+
+    try (var prefixedZip = new ZipFile(zip.toFile())) {
+      assertEquals(0, prefixedZip.size());
+    }
+  }
+
+  @Test
+  void ignoresEocdrSignatureInsideStoredEntry() throws IOException {
+    Path zip = prepareRawTestFile("eocd-signature-in-entry.zip");
+
+    try (var originalZip = new ZipFile(zip.toFile())) {
+      assertEquals(
+          100, originalZip.getInputStream(originalZip.getEntry("a")).readAllBytes().length);
+    }
+
+    byte[] prefix = "prefix".getBytes(StandardCharsets.UTF_8);
+    assertEquals(prefix.length, applyPrefixBytesToZip(zip, prefix));
+    validateZipOffsets(zip);
+
+    try (var prefixedZip = new ZipFile(zip.toFile())) {
+      assertEquals(
+          100, prefixedZip.getInputStream(prefixedZip.getEntry("a")).readAllBytes().length);
     }
   }
 
