@@ -21,6 +21,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -328,25 +329,7 @@ class ZipPrefixerTest {
 
     Path temp = Files.createTempFile("zip-prefixer-cfh", ".bin");
     try {
-      ByteBuffer cfhBuffer = ZipPrefixer.CFH.bufferFor();
-      cfhBuffer.putInt(0x02014b50); // signature
-      cfhBuffer.putShort((short) 0); // versionMadeBy
-      cfhBuffer.putShort((short) 0); // versionNeededToExtract
-      cfhBuffer.putShort((short) 0); // flags
-      cfhBuffer.putShort((short) 0); // compression
-      cfhBuffer.putShort((short) 0); // time
-      cfhBuffer.putShort((short) 0); // date
-      cfhBuffer.putInt(0); // crc
-      cfhBuffer.putInt(0); // compressed size
-      cfhBuffer.putInt(0); // uncompressed size
-      cfhBuffer.putShort((short) fileName.length);
-      cfhBuffer.putShort((short) extraField.length);
-      cfhBuffer.putShort((short) 0); // comment length
-      cfhBuffer.putShort((short) 0); // disk start
-      cfhBuffer.putShort((short) 0); // internal attr
-      cfhBuffer.putInt(0); // external attr
-      cfhBuffer.putInt(0xFFFF_FFFF); // relative offset (needs ZIP64)
-      cfhBuffer.flip();
+      ByteBuffer cfhBuffer = getCfhBuffer(fileName, extraField);
 
       try (var channel =
           Files.newByteChannel(
@@ -390,5 +373,28 @@ class ZipPrefixerTest {
     } finally {
       Files.deleteIfExists(temp);
     }
+  }
+
+  private static @NonNull ByteBuffer getCfhBuffer(byte[] fileName, byte[] extraField) {
+    ByteBuffer cfhBuffer = ZipPrefixer.CFH.bufferFor();
+    cfhBuffer.putInt(0x02014b50); // signature
+    cfhBuffer.putShort((short) 0); // versionMadeBy
+    cfhBuffer.putShort((short) 0); // versionNeededToExtract
+    cfhBuffer.putShort((short) 0); // flags
+    cfhBuffer.putShort((short) 0); // compression
+    cfhBuffer.putShort((short) 0); // time
+    cfhBuffer.putShort((short) 0); // date
+    cfhBuffer.putInt(0); // crc
+    cfhBuffer.putInt(0); // compressed size
+    cfhBuffer.putInt(0); // uncompressed size
+    cfhBuffer.putShort((short) fileName.length);
+    cfhBuffer.putShort((short) extraField.length);
+    cfhBuffer.putShort((short) 0); // comment length
+    cfhBuffer.putShort((short) 0); // disk start
+    cfhBuffer.putShort((short) 0); // internal attr
+    cfhBuffer.putInt(0); // external attr
+    cfhBuffer.putInt(0xFFFF_FFFF); // relative offset (needs ZIP64)
+    cfhBuffer.flip();
+    return cfhBuffer;
   }
 }
